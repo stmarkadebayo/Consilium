@@ -8,8 +8,8 @@ A multi-persona advisory web app that lets you assemble a council of 3–5 advis
 
 ```
 ├── docs/           # Planning and specification documents
-├── backend/        # FastAPI service (API, workers, LangGraph graphs)
-├── frontend/       # Next.js web app (TODO: scaffold)
+├── backend/        # FastAPI API + worker + retrieval + jobs
+├── frontend/       # Next.js web app
 ├── tests/          # Evaluation test fixtures
 └── docker-compose.yml
 ```
@@ -17,13 +17,65 @@ A multi-persona advisory web app that lets you assemble a council of 3–5 advis
 ## Quick Start
 
 ```bash
-# Start Postgres with pgvector
-docker compose up db
-
-# Run the API server
+# Backend setup
 cd backend
+cp .env.example .env
 pip install -r requirements.txt
+python -m alembic upgrade head
 uvicorn app.main:app --reload
+
+# Frontend setup
+cd ../frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+## Worker Process
+
+- The API no longer executes background jobs inline.
+- Run a separate worker process for persona research and council queries:
+
+```bash
+cd backend
+python -m app.worker
+```
+
+- In production, set `JOB_RUNNER_ENABLED=false` on the API process and run the worker separately.
+
+## Supabase Setup
+
+- Create a Supabase project for Auth + Postgres
+- Put the Supabase Postgres connection string in `backend/.env` as `DATABASE_URL`
+- Set `AUTH_PROVIDER=supabase`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` in `backend/.env`
+- Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local`
+- Run the backend migrations, then sign in through `/auth`
+
+## Containers
+
+- Local stack with bundled Postgres:
+
+```bash
+docker compose up --build
+```
+
+- Production-style container split:
+  - `api` serves HTTP
+  - `worker` executes queued jobs
+  - `web` serves the Next.js app
+  - use Supabase Postgres by setting `DATABASE_URL` in `backend/.env`
+
+```bash
+docker compose -f docker-compose.prod.yml up --build
+```
+
+## Verification
+
+```bash
+cd backend && python -m pytest tests -q
+cd frontend && npm run lint
+cd frontend && npm run build
+cd frontend && npm run test:e2e
 ```
 
 ## Documentation
