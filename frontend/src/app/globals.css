@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+:root, [data-theme="dark"] {
+  --color-brand-primary: #0D0D12; /* Obsidian */
+  --color-brand-accent: #C9A84C; /* Champagne */
+  --color-brand-accent-amber: #C9A84C; 
+  --color-brand-background: #0D0D12;
+  --color-brand-surface: #2A2A35; /* Slate */
+  --color-brand-text: #FAF8F5; /* Ivory */
+  
+  /* Navbar specifically needs GSAP interpolatable hexes/rgbas */
+  --color-navbar-bg: rgba(10, 10, 15, 0.6);
+  --color-navbar-border: rgba(250, 248, 245, 0.1);
+
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-playfair);
+  --font-mono: var(--font-jetbrains);
+}
+
+[data-theme="light"] {
+  --color-brand-primary: #FAF8F5; /* Ivory primary for light mode */
+  --color-brand-accent: #B08D30; /* Slightly darker gold/champagne for contrast */
+  --color-brand-accent-amber: #B08D30;
+  --color-brand-background: #F2F0E9; /* Warm off-white */
+  --color-brand-surface: #E8E4DD; /* Very light slate substitute */
+  --color-brand-text: #0D0D12; /* Obsidian text */
+  
+  --color-navbar-bg: rgba(250, 248, 245, 0.6);
+  --color-navbar-border: rgba(13, 13, 18, 0.1);
+}
+
+@theme {
+  /* Mapping dynamic CSS variables into Tailwind so colors adapt properly */
+  --color-brand-primary: var(--color-brand-primary);
+  --color-brand-accent: var(--color-brand-accent);
+  --color-brand-accent-amber: var(--color-brand-accent-amber);
+  --color-brand-background: var(--color-brand-background);
+  --color-brand-surface: var(--color-brand-surface);
+  --color-brand-text: var(--color-brand-text);
+  
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-brand-background);
+    color: var(--color-brand-text);
+    cursor: auto;
+    overflow-x: hidden;
+  }
+}
+
+@layer utilities {
+  .clip-path-reveal {
+    clip-path: inset(100% 0 0 0);
+  }
+  
+  .clip-path-visible {
+    clip-path: inset(0% 0 0 0);
+  }
+}
+
+/* Global Noise Overlay */
+.noise-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.05;
+}
+
+/* Base styles for split-type */
+.line, .word, .char {
+  display: inline-block;
+}
+
+.marketing-cursor-none,
+.marketing-cursor-none * {
+  cursor: none !important;
+}
