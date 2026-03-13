@@ -1,0 +1,63 @@
+# Consilium — Local Development Containers
+# Run:
+#   docker compose up --build
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: consilium
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: consilium
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      JOB_RUNNER_ENABLED: "false"
+    depends_on:
+      db:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: ./backend
+    command: python -m app.worker
+    env_file:
+      - ./backend/.env
+    environment:
+      JOB_RUNNER_ENABLED: "true"
+    depends_on:
+      db:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+
+  web:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./frontend/.env
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
