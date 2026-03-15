@@ -50,6 +50,7 @@ python -m app.worker
 - Set `AUTH_PROVIDER=supabase`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` in `backend/.env`
 - Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local`
 - Run the backend migrations, then sign in through `/auth`
+- Mock frontend mode is now opt-in via `NEXT_PUBLIC_USE_MOCK_API=true`
 
 ## Containers
 
@@ -64,8 +65,10 @@ docker compose up --build
   - `worker` executes queued jobs
   - `web` serves the Next.js app
   - use Supabase Postgres by setting `DATABASE_URL` in `backend/.env`
+  - set `NEXT_PUBLIC_API_BASE_URL` in your shell before building so the web image bakes the correct public API origin
 
 ```bash
+export NEXT_PUBLIC_API_BASE_URL=https://api.example.com
 docker compose -f docker-compose.prod.yml up --build
 ```
 
