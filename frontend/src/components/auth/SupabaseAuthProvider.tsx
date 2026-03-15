@@ -21,9 +21,9 @@ const AuthContext = createContext<AuthContextValue>({
 });
 
 export function SupabaseAuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<SupabaseAuthSnapshot>({ session: {} as any, user: { id: "mock", email: "demo@consilium.com" } as any });
+  const [state, setState] = useState<SupabaseAuthSnapshot>({ session: null, user: null });
   const configured = isSupabaseConfigured();
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(configured);
 
   useEffect(() => {
     if (!configured) {
@@ -31,8 +31,12 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     }
 
     const client = getSupabaseBrowserClient();
+    let isActive = true;
 
     client.auth.getSession().then(({ data }) => {
+      if (!isActive) {
+        return;
+      }
       setState({ session: data.session, user: data.session?.user ?? null });
       setIsLoading(false);
     });
@@ -40,11 +44,17 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     const {
       data: { subscription },
     } = client.auth.onAuthStateChange((_event, session) => {
+      if (!isActive) {
+        return;
+      }
       setState({ session, user: session?.user ?? null });
       setIsLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isActive = false;
+      subscription.unsubscribe();
+    };
   }, [configured]);
 
   const value = useMemo<AuthContextValue>(
