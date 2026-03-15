@@ -18,8 +18,10 @@ def headers() -> dict[str, str]:
 @pytest.fixture
 def client(tmp_path) -> TestClient:
     settings = Settings(
+        _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'consilium-test.db'}",
         auto_create_tables=True,
+        auth_provider="development",
         cors_origins=["http://localhost:3000"],
         job_runner_poll_interval_seconds=0.05,
     )
