@@ -9,10 +9,22 @@ from app.providers.base import BaseProvider
 
 
 class GeminiProvider(BaseProvider):
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        *,
+        synthesis_model: str | None = None,
+        persona_max_output_tokens: int = 180,
+        synthesis_max_output_tokens: int = 280,
+        evidence_char_limit: int = 240,
+    ) -> None:
         self.api_key = api_key
         self.model = model
-        self.endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        self.synthesis_model = synthesis_model or model
+        self.persona_max_output_tokens = persona_max_output_tokens
+        self.synthesis_max_output_tokens = synthesis_max_output_tokens
+        self.evidence_char_limit = evidence_char_limit
 
     def generate_persona_response(
         self,
@@ -29,10 +41,9 @@ class GeminiProvider(BaseProvider):
 
         system_instruction = (
             "You are simulating a council advisor. Stay faithful to the supplied persona snapshot. "
-            "Do not claim external facts you cannot support from the prompt. Produce grounded, concise, "
-            "decision-useful output."
+            "Use only the provided persona and evidence. Be grounded, concise, and decision-useful."
         )
-        evidence_lines = self._format_evidence(evidence_snippets)
+        evidence_lines = self._format_evidence(evidence_snippets, self.evidence_char_limit)
         user_prompt = (
             f"User prompt:\n{prompt}\n\n"
             f"Persona display name: {display_name}\n"
@@ -43,8 +54,8 @@ class GeminiProvider(BaseProvider):
             f"Values:\n{values}\n\n"
             f"Blind spots:\n{blind_spots}\n\n"
             f"Evidence pack:\n{evidence_lines}\n\n"
-            "Return a single council response object. Keep reasoning under 120 words. "
-            "Set status to 'completed'. Set confidence between 0 and 1."
+            "Return one council response object. Keep reasoning under 80 words. "
+            "Keep verdict and recommended_action brief. Set status to 'completed'. Set confidence between 0 and 1."
         )
         schema = {
             "type": "object",
@@ -66,10 +77,12 @@ class GeminiProvider(BaseProvider):
             ],
         }
         payload = self._generate_json(
+            model=self.model,
             system_instruction=system_instruction,
             user_prompt=user_prompt,
             schema=schema,
             temperature=0.4,
+            max_output_tokens=self.persona_max_output_tokens,
         )
         confidence = max(0.0, min(1.0, float(payload.get("confidence", 0.0))))
         return {
@@ -98,13 +111,13 @@ class GeminiProvider(BaseProvider):
 
         system_instruction = (
             "You are the synthesis layer for a private council. Find the genuine overlap, surface the real "
-            "disagreements, and recommend the smallest useful next step. Do not invent evidence."
+            "disagreements, and recommend the smallest useful next step. Stay concise and do not invent evidence."
         )
         user_prompt = (
             f"Original prompt:\n{prompt}\n\n"
             "Persona responses:\n"
             f"{chr(10).join(rendered_responses)}\n\n"
-            "Return concise synthesis output."
+            "Return concise synthesis output. Keep each agreement/disagreement short."
         )
         schema = {
             "type": "object",
@@ -117,10 +130,12 @@ class GeminiProvider(BaseProvider):
             "required": ["agreements", "disagreements", "next_step", "combined_recommendation"],
         }
         payload = self._generate_json(
+            model=self.synthesis_model,
             system_instruction=system_instruction,
             user_prompt=user_prompt,
             schema=schema,
             temperature=0.2,
+            max_output_tokens=self.synthesis_max_output_tokens,
         )
         return {
             "agreements": [str(item).strip() for item in payload.get("agreements", []) if str(item).strip()],
@@ -134,13 +149,53 @@ class GeminiProvider(BaseProvider):
     def _generate_json(
         self,
         *,
+        model: str,
         system_instruction: str,
         user_prompt: str,
         schema: dict[str, Any],
         temperature: float,
+        max_output_tokens: int,
     ) -> dict[str, Any]:
+        text_payload = self._request_json_payload(
+            model=model,
+            system_instruction=system_instruction,
+            user_prompt=user_prompt,
+            schema=schema,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
+        try:
+            return self._coerce_json_object(text_payload)
+        except RuntimeError as error:
+            if "invalid JSON" not in str(error):
+                raise
+
+        retry_prompt = (
+            f"{user_prompt}\n\n"
+            "Return valid JSON only. Do not include markdown fences, commentary, or any text before or after the JSON object."
+        )
+        retry_payload = self._request_json_payload(
+            model=model,
+            system_instruction=system_instruction,
+            user_prompt=retry_prompt,
+            schema=schema,
+            temperature=temperature,
+            max_output_tokens=max(max_output_tokens, 320),
+        )
+        return self._coerce_json_object(retry_payload)
+
+    def _request_json_payload(
+        self,
+        *,
+        model: str,
+        system_instruction: str,
+        user_prompt: str,
+        schema: dict[str, Any],
+        temperature: float,
+        max_output_tokens: int,
+    ) -> str:
         response = httpx.post(
-            self.endpoint,
+            self._build_endpoint(model),
             headers={
                 "Content-Type": "application/json",
                 "x-goog-api-key": self.api_key,
@@ -150,6 +205,7 @@ class GeminiProvider(BaseProvider):
                 "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
                 "generationConfig": {
                     "temperature": temperature,
+                    "maxOutputTokens": max_output_tokens,
                     "responseMimeType": "application/json",
                     "responseJsonSchema": schema,
                 },
@@ -160,15 +216,11 @@ class GeminiProvider(BaseProvider):
             raise RuntimeError(self._extract_error_message(response))
 
         body = response.json()
-        text_payload = self._extract_text_payload(body)
-        try:
-            parsed = json.loads(text_payload)
-        except json.JSONDecodeError as error:
-            raise RuntimeError("Gemini returned invalid JSON") from error
+        return self._extract_text_payload(body)
 
-        if not isinstance(parsed, dict):
-            raise RuntimeError("Gemini returned a non-object JSON payload")
-        return parsed
+    @staticmethod
+    def _build_endpoint(model: str) -> str:
+        return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
     @staticmethod
     def _extract_text_payload(body: dict[str, Any]) -> str:
@@ -182,6 +234,33 @@ class GeminiProvider(BaseProvider):
         if not payload:
             raise RuntimeError("Gemini returned an empty response payload")
         return payload
+
+    @staticmethod
+    def _coerce_json_object(text_payload: str) -> dict[str, Any]:
+        candidate = text_payload.strip()
+        if candidate.startswith("```"):
+            lines = candidate.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            candidate = "\n".join(lines).strip()
+
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            start = candidate.find("{")
+            end = candidate.rfind("}")
+            if start == -1 or end == -1 or end <= start:
+                raise RuntimeError("Gemini returned invalid JSON")
+            try:
+                parsed = json.loads(candidate[start : end + 1])
+            except json.JSONDecodeError as error:
+                raise RuntimeError("Gemini returned invalid JSON") from error
+
+        if not isinstance(parsed, dict):
+            raise RuntimeError("Gemini returned a non-object JSON payload")
+        return parsed
 
     @staticmethod
     def _extract_error_message(response: httpx.Response) -> str:
@@ -202,7 +281,9 @@ class GeminiProvider(BaseProvider):
         return "\n".join(f"- {value}" for value in values)
 
     @staticmethod
-    def _format_evidence(evidence_snippets: list[dict[str, Any]] | None) -> str:
+    def _format_evidence(
+        evidence_snippets: list[dict[str, Any]] | None, evidence_char_limit: int
+    ) -> str:
         if not evidence_snippets:
             return "- No retrieved evidence snippets available."
         lines = []
@@ -210,7 +291,10 @@ class GeminiProvider(BaseProvider):
             source_title = item.get("source_title") or "Untitled source"
             score = item.get("score")
             score_text = f"{score:.2f}" if isinstance(score, (float, int)) else "n/a"
-            lines.append(f"- {source_title} (score {score_text}): {item.get('chunk_text', '')}")
+            chunk_text = str(item.get("chunk_text", "")).strip()
+            if len(chunk_text) > evidence_char_limit:
+                chunk_text = f"{chunk_text[:evidence_char_limit].rstrip()}..."
+            lines.append(f"- {source_title} (score {score_text}): {chunk_text}")
         return "\n".join(lines)
 
     @staticmethod
