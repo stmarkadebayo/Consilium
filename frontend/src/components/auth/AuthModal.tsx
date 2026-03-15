@@ -77,6 +77,32 @@ export default function AuthModal() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    if (!configured) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const client = getSupabaseBrowserClient();
+      const { error } = await client.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/app`,
+        },
+      });
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Google authentication failed");
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div 
       className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--color-brand-primary)]/70 backdrop-blur-md p-4"
@@ -221,6 +247,8 @@ export default function AuthModal() {
 
             <button
               type="button"
+              onClick={() => void handleGoogleSignIn()}
+              disabled={!configured || isSubmitting}
               className="group relative overflow-hidden inline-flex items-center justify-center gap-2 rounded-full border border-[rgba(128,128,128,0.15)] bg-transparent px-5 py-4 text-sm font-bold text-[var(--color-brand-text)] transition-transform hover:scale-[1.02]"
               style={{ transitionTimingFunction: "cubic-bezier(0.25, 0.46, 0.45, 0.94)" }}
             >
