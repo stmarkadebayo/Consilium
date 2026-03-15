@@ -30,6 +30,10 @@ class Settings(BaseSettings):
 
     default_model: str = "mock-council"
     gemini_api_key: Optional[str] = None
+    gemini_synthesis_model: Optional[str] = "gemini-2.5-flash-lite"
+    gemini_persona_max_output_tokens: int = 180
+    gemini_synthesis_max_output_tokens: int = 280
+    gemini_evidence_char_limit: int = 240
     embedding_model: Optional[str] = None
     embedding_dimensions: Optional[int] = None
     posthog_host: Optional[str] = None
