@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
+import { isSupabaseConfigured, signOutSupabase } from "@/lib/supabase";
+
 export default function Sidebar() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -26,6 +28,7 @@ export default function Sidebar() {
     return savedTheme === "light" ? "light" : "dark";
   });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -36,6 +39,19 @@ export default function Sidebar() {
     setTheme(newTheme);
     localStorage.setItem("theme", newTheme);
     document.documentElement.setAttribute("data-theme", newTheme);
+  };
+
+  const handleSignOut = async () => {
+    if (!isSupabaseConfigured()) {
+      return;
+    }
+    setIsSigningOut(true);
+    try {
+      await signOutSupabase();
+      window.location.href = "/auth";
+    } finally {
+      setIsSigningOut(false);
+    }
   };
 
   const navItems = [
@@ -120,11 +136,17 @@ export default function Sidebar() {
           </button>
 
           <button
+            onClick={() => void handleSignOut()}
+            disabled={!isSupabaseConfigured() || isSigningOut}
             className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-red-400/80 hover:bg-red-500/10 hover:text-red-400 transition-all duration-300 group"
             title={isCollapsed ? "Sign Out" : undefined}
           >
             <LogOut size={20} className="shrink-0" />
-            {!isCollapsed && <span className="font-medium truncate">Sign Out</span>}
+            {!isCollapsed && (
+              <span className="font-medium truncate">
+                {isSigningOut ? "Signing Out..." : "Sign Out"}
+              </span>
+            )}
           </button>
         </div>
       </aside>

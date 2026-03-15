@@ -1,21 +1,44 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 
+import { API_BASE_URL } from "@/lib/api";
+import { useSupabaseAuth } from "@/components/auth/SupabaseAuthProvider";
+import { signOutSupabase } from "@/lib/supabase";
+
 export default function SettingsPage() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof window === "undefined") {
+      return "dark";
+    }
+    return window.localStorage.getItem("theme") === "light" ? "light" : "dark";
+  });
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const { user, isConfigured } = useSupabaseAuth();
 
   useEffect(() => {
-    const saved = localStorage.getItem("theme") as "dark" | "light" | null;
-    if (saved) setTheme(saved);
-  }, []);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
+    window.localStorage.setItem("theme", newTheme);
     document.documentElement.setAttribute("data-theme", newTheme);
+  };
+
+  const handleSignOut = async () => {
+    if (!isConfigured) {
+      return;
+    }
+    setIsSigningOut(true);
+    try {
+      await signOutSupabase();
+      window.location.href = "/auth";
+    } finally {
+      setIsSigningOut(false);
+    }
   };
 
   return (
@@ -53,7 +76,7 @@ export default function SettingsPage() {
               <p className="text-sm text-[var(--color-brand-text)]/60 mt-1">Backend server connection.</p>
             </div>
             <span className="text-sm font-mono text-[var(--color-brand-accent)] bg-[var(--color-brand-accent)]/10 px-4 py-2 rounded-full">
-              localhost:8000
+              {API_BASE_URL}
             </span>
           </div>
 
@@ -61,11 +84,19 @@ export default function SettingsPage() {
           <div className="p-6 flex items-center justify-between">
             <div>
               <h3 className="font-bold text-[var(--color-brand-text)]">Account</h3>
-              <p className="text-sm text-[var(--color-brand-text)]/60 mt-1">demo@consilium.com</p>
+              <p className="text-sm text-[var(--color-brand-text)]/60 mt-1">
+                {user?.email ?? (isConfigured ? "No active session" : "Development auth mode")}
+              </p>
             </div>
-            <button className="text-sm font-bold text-red-400/80 hover:text-red-400 px-5 py-3 rounded-full border border-red-400/20 hover:border-red-400/40 transition-colors">
-              Sign Out
-            </button>
+            {isConfigured && (
+              <button
+                onClick={() => void handleSignOut()}
+                disabled={isSigningOut}
+                className="text-sm font-bold text-red-400/80 hover:text-red-400 px-5 py-3 rounded-full border border-red-400/20 hover:border-red-400/40 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSigningOut ? "Signing Out..." : "Sign Out"}
+              </button>
+            )}
           </div>
         </section>
       </div>
