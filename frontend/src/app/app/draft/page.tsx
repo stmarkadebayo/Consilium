@@ -25,7 +25,7 @@ export default function DraftCouncilPage() {
         const [c, p] = await Promise.all([api.getCouncil(), api.listPersonas()]);
         setCouncil(c);
         setPersonas(p);
-      } catch (err) {
+      } catch {
         setError("Failed to load council state.");
       } finally {
         setIsLoading(false);
@@ -44,7 +44,7 @@ export default function DraftCouncilPage() {
       const [c, p] = await Promise.all([api.getCouncil(), api.listPersonas()]);
       setCouncil(c);
       setPersonas(p);
-    } catch (err) {
+    } catch {
       setError("Failed to update council roster.");
     }
   };
@@ -88,7 +88,7 @@ export default function DraftCouncilPage() {
       const [c, p] = await Promise.all([api.getCouncil(), api.listPersonas()]);
       setCouncil(c);
       setPersonas(p);
-    } catch (err) {
+    } catch {
       setError("Failed to draft historical minds.");
     } finally {
       setIsSeeding(false);
@@ -116,7 +116,7 @@ export default function DraftCouncilPage() {
       setCustomSummary("");
       setCustomWorldview("");
       setCustomValues("");
-    } catch (err) {
+    } catch {
       setError("Failed to save custom persona.");
     } finally {
       setIsSavingCustom(false);
