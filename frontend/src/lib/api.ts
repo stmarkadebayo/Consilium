@@ -222,11 +222,11 @@ export type CreatePersonaSourceInput = {
   content?: string;
 };
 
-const USE_MOCK = true;
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_API === "true";
 
-let mockPersonas: Persona[] = [];
-let mockConversations: ConversationSummary[] = [];
-let mockCouncil: Council = {
+const mockPersonas: Persona[] = [];
+const mockConversations: ConversationSummary[] = [];
+const mockCouncil: Council = {
   id: "c1",
   name: "My Council",
   min_personas: 3,
@@ -236,24 +236,55 @@ let mockCouncil: Council = {
   members: [],
 };
 
+function cloneCouncil(council: Council): Council {
+  return {
+    ...council,
+    members: council.members.map((member) => ({ ...member })),
+  };
+}
+
+function clonePersonas(personas: Persona[]): Persona[] {
+  return personas.map((persona) => ({
+    ...persona,
+    worldview: [...persona.worldview],
+    communication_style: [...persona.communication_style],
+    decision_style: [...persona.decision_style],
+    values: [...persona.values],
+    blind_spots: [...persona.blind_spots],
+    domain_confidence: { ...persona.domain_confidence },
+  }));
+}
+
+function cloneConversations(conversations: ConversationSummary[]): ConversationSummary[] {
+  return conversations.map((conversation) => ({ ...conversation }));
+}
+
 export const api = {
   getMe: async () => {
-    if (USE_MOCK) return { id: "u1", email: "demo@consilium.com", display_name: "Demo User", onboarding_done: true, created_at: new Date().toISOString() };
+    if (USE_MOCK) {
+      return {
+        id: "u1",
+        email: "demo@consilium.com",
+        display_name: "Demo User",
+        onboarding_done: true,
+        created_at: new Date().toISOString(),
+      };
+    }
     return request<User>("/me");
   },
   getCouncil: async () => {
-    if (USE_MOCK) return mockCouncil;
+    if (USE_MOCK) return cloneCouncil(mockCouncil);
     return request<Council>("/council");
   },
   updateCouncil: async (name: string) => {
     if (USE_MOCK) {
       mockCouncil.name = name;
-      return mockCouncil;
+      return cloneCouncil(mockCouncil);
     }
     return request<Council>("/council", { method: "PATCH", bodyJson: { name } });
   },
   listPersonas: async () => {
-    if (USE_MOCK) return mockPersonas;
+    if (USE_MOCK) return clonePersonas(mockPersonas);
     return (await request<{ personas: Persona[] }>("/personas")).personas;
   },
   createPersona: async (payload: CreatePersonaInput) => {
@@ -271,10 +302,9 @@ export const api = {
         domain_confidence: payload.domain_confidence || {},
         source_count: payload.source_count || 0,
         source_quality_score: payload.source_quality_score || 0,
-        status: "ready",
+        status: "active",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        ...payload as any
       };
       if (payload.add_to_council) {
         mockCouncil.members.push({
@@ -287,7 +317,7 @@ export const api = {
         });
       }
       mockPersonas.push(p);
-      return p;
+      return { ...p };
     }
     return request<Persona>("/personas", { method: "POST", bodyJson: payload });
   },
@@ -305,21 +335,26 @@ export const api = {
     }),
   deactivatePersona: async (personaId: string) => {
     if (USE_MOCK) {
-       const p = mockPersonas.find(x => x.id === personaId);
-       const member = mockCouncil.members.find(m => m.persona_id === personaId);
-       if (member) {
-         member.is_active = !member.is_active; // toggle for mock
-       } else if (p) {
-         mockCouncil.members.push({
+      const persona = mockPersonas.find((item) => item.id === personaId);
+      if (!persona) {
+        throw new Error("Persona not found");
+      }
+      const member = mockCouncil.members.find((item) => item.persona_id === personaId);
+      if (member) {
+        member.is_active = !member.is_active;
+        persona.status = member.is_active ? "active" : "inactive";
+      } else {
+        mockCouncil.members.push({
           id: `cm_${Date.now()}`,
-          persona_id: p.id,
-          display_name: p.display_name,
-          persona_type: p.persona_type,
+          persona_id: persona.id,
+          display_name: persona.display_name,
+          persona_type: persona.persona_type,
           position: mockCouncil.members.length,
-          is_active: true
+          is_active: true,
         });
-       }
-       return p!;
+        persona.status = "active";
+      }
+      return { ...persona };
     }
     return request<Persona>(`/personas/${personaId}/deactivate`, { method: "POST" });
   },
@@ -330,7 +365,7 @@ export const api = {
   addPersonaSource: (personaId: string, payload: CreatePersonaSourceInput) =>
     request<PersonaSource>(`/personas/${personaId}/sources`, { method: "POST", bodyJson: payload }),
   listConversations: async () => {
-    if (USE_MOCK) return mockConversations;
+    if (USE_MOCK) return cloneConversations(mockConversations);
     return (await request<{ conversations: ConversationSummary[]; next_cursor: string | null }>("/conversations")).conversations;
   },
   createConversation: async (title?: string) => {
@@ -343,7 +378,7 @@ export const api = {
         message_count: 0
       };
       mockConversations.push(c);
-      return c;
+      return { ...c };
     }
     return request<ConversationSummary>("/conversations", {
       method: "POST",
@@ -352,7 +387,7 @@ export const api = {
   },
   getConversation: async (conversationId: string) => {
     if (USE_MOCK) {
-       return { id: conversationId, title: "Mock Debate", turns: [] };
+      return { id: conversationId, title: "Mock Debate", turns: [] };
     }
     return request<Conversation>(`/conversations/${conversationId}`);
   },
