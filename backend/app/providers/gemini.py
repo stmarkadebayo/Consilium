@@ -31,6 +31,8 @@ class GeminiProvider(BaseProvider):
         persona_snapshot: dict[str, Any],
         prompt: str,
         evidence_snippets: list[dict[str, Any]] | None = None,
+        *,
+        expected_response_type: str | None = None,
     ) -> dict[str, Any]:
         display_name = persona_snapshot["display_name"]
         worldview = self._format_list(persona_snapshot.get("worldview"))
@@ -38,12 +40,14 @@ class GeminiProvider(BaseProvider):
         decision_style = self._format_list(persona_snapshot.get("decision_style"))
         values = self._format_list(persona_snapshot.get("values"))
         blind_spots = self._format_list(persona_snapshot.get("blind_spots"))
+        runtime_directives = self._format_list(persona_snapshot.get("runtime_directives"))
 
         system_instruction = (
             "You are simulating a council advisor. Stay faithful to the supplied persona snapshot. "
             "Use only the provided persona and evidence. Be grounded, concise, and decision-useful."
         )
         evidence_lines = self._format_evidence(evidence_snippets, self.evidence_char_limit)
+        required_mode_text = expected_response_type or "inference"
         user_prompt = (
             f"User prompt:\n{prompt}\n\n"
             f"Persona display name: {display_name}\n"
@@ -53,9 +57,13 @@ class GeminiProvider(BaseProvider):
             f"Decision style:\n{decision_style}\n\n"
             f"Values:\n{values}\n\n"
             f"Blind spots:\n{blind_spots}\n\n"
+            f"Runtime directives:\n{runtime_directives}\n\n"
             f"Evidence pack:\n{evidence_lines}\n\n"
+            f"Required response mode: {required_mode_text}\n\n"
             "Return one council response object. Keep reasoning under 80 words. "
-            "Keep verdict and recommended_action brief. Set status to 'completed'. Set confidence between 0 and 1."
+            "Keep verdict and recommended_action brief. Set status to 'completed'. "
+            "Set response_type to the required response mode unless the evidence clearly supports an even more cautious mode. "
+            "Set confidence between 0 and 1."
         )
         schema = {
             "type": "object",
@@ -92,6 +100,51 @@ class GeminiProvider(BaseProvider):
             "recommended_action": str(payload["recommended_action"]).strip(),
             "confidence": confidence,
             "status": str(payload.get("status", "completed")).strip() or "completed",
+        }
+
+    def classify_response_mode(
+        self,
+        persona_snapshot: dict[str, Any],
+        prompt: str,
+        evidence_snippets: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        grounding_profile = persona_snapshot.get("grounding_profile", {})
+        evidence_lines = self._format_evidence(evidence_snippets, self.evidence_char_limit)
+        system_instruction = (
+            "You classify whether a persona should answer directly, infer cautiously, or abstain. "
+            "Be conservative and use only the provided evidence."
+        )
+        user_prompt = (
+            f"User prompt:\n{prompt}\n\n"
+            f"Persona display name: {persona_snapshot.get('display_name', 'Unknown')}\n"
+            f"Identity summary: {persona_snapshot.get('identity_summary', 'N/A')}\n"
+            f"Grounding profile: {json.dumps(grounding_profile)}\n\n"
+            f"Evidence pack:\n{evidence_lines}\n\n"
+            "Return response_type as one of answer, inference, or no_basis. "
+            "Choose answer only when support is strong and specific."
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "response_type": {"type": "string"},
+                "basis_score": {"type": "number"},
+                "reasoning": {"type": "string"},
+            },
+            "required": ["response_type", "basis_score", "reasoning"],
+        }
+        payload = self._generate_json(
+            model=self.model,
+            system_instruction=system_instruction,
+            user_prompt=user_prompt,
+            schema=schema,
+            temperature=0.1,
+            max_output_tokens=120,
+        )
+        basis_score = max(0.0, min(1.0, float(payload.get("basis_score", 0.0))))
+        return {
+            "response_type": self._normalize_response_type(payload.get("response_type")),
+            "basis_score": basis_score,
+            "reasoning": str(payload.get("reasoning", "")).strip(),
         }
 
     def generate_synthesis(self, prompt: str, persona_responses: list[dict[str, Any]]) -> dict[str, Any]:
