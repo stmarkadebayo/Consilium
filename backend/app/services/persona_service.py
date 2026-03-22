@@ -6,6 +6,7 @@ from typing import Optional, Tuple
 import httpx
 from sqlalchemy.orm import Session, joinedload
 
+from app.engines.persona_intelligence import PersonaIntelligenceEngine
 from app.graphs.persona_creation import build_persona_draft
 from app.models.council import CouncilMember
 from app.models.job import Job
@@ -155,7 +156,7 @@ class PersonaService:
     def create_snapshot(db: Session, persona: Persona) -> PersonaSnapshot:
         snapshot = PersonaSnapshot(
             persona_id=persona.id,
-            snapshot_json=PersonaService.serialize_persona(persona),
+            snapshot_json=PersonaIntelligenceEngine.serialize_persona(persona),
         )
         db.add(snapshot)
         db.flush()
@@ -365,23 +366,7 @@ class PersonaService:
 
     @staticmethod
     def serialize_persona(persona: Persona) -> dict:
-        return {
-            "id": persona.id,
-            "display_name": persona.display_name,
-            "persona_type": persona.persona_type,
-            "identity_summary": persona.identity_summary,
-            "worldview": persona.worldview_json,
-            "communication_style": persona.communication_style_json,
-            "decision_style": persona.decision_style_json,
-            "values": persona.values_json,
-            "blind_spots": persona.blind_spots_json,
-            "domain_confidence": persona.domain_confidence_json,
-            "source_count": persona.source_count,
-            "source_quality_score": persona.source_quality_score,
-            "status": persona.status,
-            "created_at": persona.created_at.isoformat() if persona.created_at else None,
-            "updated_at": persona.updated_at.isoformat() if persona.updated_at else None,
-        }
+        return PersonaIntelligenceEngine.serialize_persona(persona)
 
     @staticmethod
     def _sync_source_metrics(persona: Persona) -> None:
@@ -410,9 +395,11 @@ class PersonaService:
 
     @staticmethod
     def _build_draft_profile_with_source_summary(draft: PersonaDraft) -> dict:
-        profile = dict(draft.draft_profile_json or {})
+        profile = PersonaIntelligenceEngine.compile_draft_profile(
+            draft.draft_profile_json,
+            sources=list(draft.sources),
+        )
         external_sources = list(draft.sources)
-        quality_scores = [source.quality_score for source in external_sources if source.quality_score is not None]
         primary_count = sum(1 for source in external_sources if source.is_primary)
         persistent_warnings = [
             warning
@@ -430,8 +417,6 @@ class PersonaService:
                 f"Primary-source coverage is weak: {primary_count} of 2 recommended primary sources collected."
             )
 
-        profile["source_count"] = len(external_sources)
-        profile["source_quality_score"] = round(sum(quality_scores) / len(quality_scores), 4) if quality_scores else None
         profile["warnings"] = warnings
         return profile
 
