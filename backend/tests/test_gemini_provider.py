@@ -59,6 +59,42 @@ def test_generate_persona_response_parses_structured_json(monkeypatch):
     assert result["confidence"] == 0.82
 
 
+def test_classify_response_mode_parses_structured_json(monkeypatch):
+    provider = GeminiProvider(api_key="test-key", model="gemini-2.5-flash")
+
+    monkeypatch.setattr(
+        "app.providers.gemini.httpx.post",
+        lambda *args, **kwargs: DummyResponse(
+            200,
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        '{"response_type":"no_basis","basis_score":0.19,'
+                                        '"reasoning":"The evidence is too thin."}'
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        ),
+    )
+
+    result = provider.classify_response_mode(
+        {"display_name": "Operator", "grounding_profile": {"grounding_tier": "thin"}},
+        "Should we enter this market?",
+        [],
+    )
+
+    assert result["response_type"] == "no_basis"
+    assert result["basis_score"] == 0.19
+
+
 def test_generate_persona_response_normalizes_unexpected_response_type(monkeypatch):
     provider = GeminiProvider(api_key="test-key", model="gemini-2.5-flash")
 
