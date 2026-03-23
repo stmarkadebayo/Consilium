@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft,
   LoaderCircle,
   MessageSquareText,
   PauseCircle,
@@ -168,6 +166,15 @@ export default function WorkspacePage() {
     [council],
   );
   const readyToQuery = activeMemberCount >= (council?.min_personas ?? 3);
+  const activePersonaIds = useMemo(
+    () => new Set((council?.members ?? []).filter((member) => member.is_active).map((member) => member.persona_id)),
+    [council],
+  );
+  const activePersonas = useMemo(
+    () => personas.filter((persona) => activePersonaIds.has(persona.id) && persona.status === "active"),
+    [activePersonaIds, personas],
+  );
+  const onboardingStep = readyToQuery ? 3 : activeMemberCount > 0 ? 2 : 1;
 
   const refreshCouncilAndPersonas = useCallback(async () => {
     const [nextCouncil, nextPersonas] = await Promise.all([api.getCouncil(), api.listPersonas()]);
@@ -639,65 +646,8 @@ export default function WorkspacePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(58,125,139,0.24),_transparent_30%),linear-gradient(180deg,_rgba(255,255,255,0.02),_transparent)] px-4 py-6 md:px-8 md:py-8">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(58,125,139,0.22),_transparent_30%),linear-gradient(180deg,_rgba(255,255,255,0.02),_transparent)] px-4 py-6 md:px-8 md:py-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <header className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.04)] px-5 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl md:px-8">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-3">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-white/55 transition-colors hover:text-white"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Back to landing page
-              </Link>
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-[var(--color-brand-accent-amber)]">
-                  Live workspace
-                </p>
-                <h1 className="mt-2 font-serif text-4xl italic tracking-tight md:text-5xl">
-                  {council?.name ?? "My Council"}
-                </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70 md:text-base">
-                  Assemble at least three advisors, then ask one question and compare the council&apos;s
-                  visible agreement, disagreement, and next step.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-3 text-sm text-white/75 md:min-w-[320px]">
-              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <span className="uppercase tracking-[0.25em] text-white/45">User</span>
-                  <span>{user?.display_name ?? user?.email ?? "Demo User"}</span>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <span className="uppercase tracking-[0.25em] text-white/45">Backend</span>
-                  <a
-                    href={API_BASE_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[var(--color-brand-accent)] underline-offset-4 hover:underline"
-                  >
-                    {API_BASE_URL}
-                  </a>
-                </div>
-              </div>
-              {isSupabaseConfigured() && (
-                <button
-                  onClick={handleSignOut}
-                  disabled={isSigningOut}
-                  className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60"
-                >
-                  {isSigningOut ? "Signing out..." : "Sign out"}
-                </button>
-              )}
-            </div>
-          </div>
-        </header>
-
         {(statusMessage || errorMessage) && (
           <div
             className={`rounded-[1.5rem] border px-4 py-3 text-sm ${
@@ -710,352 +660,360 @@ export default function WorkspacePage() {
           </div>
         )}
 
-        <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="space-y-6">
-            <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-white/6 p-3 text-[var(--color-brand-accent)]">
-                  <Users className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.25em] text-white/45">Council setup</p>
-                  <h2 className="text-xl font-semibold text-white">Shape the advisory bench</h2>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-4">
-                <label className="grid gap-2">
-                  <span className="text-xs uppercase tracking-[0.25em] text-white/45">Council name</span>
-                  <div className="flex gap-2">
-                    <input
-                      value={councilNameDraft}
-                      onChange={(event) => setCouncilNameDraft(event.target.value)}
-                      className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                      placeholder="My Council"
-                    />
-                    <button
-                      onClick={handleSaveCouncilName}
-                      disabled={isSavingCouncilName}
-                      className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:bg-[var(--color-brand-accent-amber)] disabled:opacity-60"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </label>
-
-                <button
-                  onClick={handleSeedCouncil}
-                  disabled={isSeedingCouncil || activeMemberCount >= (council?.max_personas ?? 5)}
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSeedingCouncil ? (
-                    <>
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                      Building starter council
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4" />
-                      Generate starter council
-                    </>
-                  )}
-                </button>
-
-                <div className="rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-white/70">Active advisors</span>
-                    <span className="font-semibold text-white">
-                      {activeMemberCount} / {council?.min_personas ?? 3} minimum
-                    </span>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/8">
-                    <div
-                      className="h-full rounded-full bg-[var(--color-brand-accent)] transition-all"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          (activeMemberCount / Math.max(council?.min_personas ?? 3, 1)) * 100,
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-white/60">
-                    {readyToQuery
-                      ? "Your council is ready. Start a thread and ask a decision-quality question."
-                      : "Add at least three active personas before querying the council."}
+        {!readyToQuery ? (
+          <>
+            <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.04)] px-5 py-6 shadow-[0_24px_80px_rgba(0,0,0,0.2)] backdrop-blur-xl md:px-8 md:py-8">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div className="max-w-3xl">
+                  <p className="text-xs uppercase tracking-[0.35em] text-[var(--color-brand-accent-amber)]">
+                    Onboarding
                   </p>
+                  <h1 className="mt-3 font-serif text-4xl italic tracking-tight text-white md:text-5xl">
+                    Build your council first.
+                  </h1>
+                  <p className="mt-3 text-sm leading-7 text-white/70 md:text-base">
+                    Setting up the council should feel like an onboarding flow, not a dashboard. Name the council,
+                    add at least three advisors, review the bench, and the interface will collapse into a normal
+                    chat workspace automatically.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[
+                    { step: 1, title: "Name council" },
+                    { step: 2, title: "Add advisors" },
+                    { step: 3, title: "Unlock chat" },
+                  ].map((item) => {
+                    const isComplete = onboardingStep > item.step || (readyToQuery && item.step === 3);
+                    const isCurrent = onboardingStep === item.step && !readyToQuery;
+                    return (
+                      <div
+                        key={item.step}
+                        className={`rounded-[1.5rem] border px-4 py-4 ${
+                          isComplete
+                            ? "border-[var(--color-brand-accent)]/30 bg-[var(--color-brand-accent)]/12"
+                            : isCurrent
+                              ? "border-[var(--color-brand-accent-amber)]/30 bg-[var(--color-brand-accent-amber)]/10"
+                              : "border-white/10 bg-black/20"
+                        }`}
+                      >
+                        <p className="text-[10px] uppercase tracking-[0.3em] text-white/45">Step {item.step}</p>
+                        <p className="mt-2 text-sm font-semibold text-white">{item.title}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-white/6 p-3 text-[var(--color-brand-accent-amber)]">
-                  <Plus className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.25em] text-white/45">Add advisor</p>
-                  <h2 className="text-xl font-semibold text-white">Create a persona</h2>
-                </div>
-              </div>
-
-              <form className="mt-5 grid gap-4" onSubmit={handleCreatePersona}>
-                <label className="grid gap-2">
-                  <span className="text-xs uppercase tracking-[0.25em] text-white/45">Name</span>
-                  <input
-                    required
-                    value={personaForm.displayName}
-                    onChange={(event) => handlePersonaFieldChange("displayName", event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                    placeholder="Naval Ravikant or Custom Operator"
-                  />
-                </label>
-
-                <label className="grid gap-2">
-                  <span className="text-xs uppercase tracking-[0.25em] text-white/45">Type</span>
-                  <select
-                    value={personaForm.personaType}
-                    onChange={(event) =>
-                      handlePersonaFieldChange(
-                        "personaType",
-                        event.target.value as PersonaFormState["personaType"],
-                      )
-                    }
-                    className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                  >
-                    <option value="custom">Custom advisor</option>
-                    <option value="real_person">Real-person-inspired</option>
-                  </select>
-                </label>
-
-                <label className="grid gap-2">
-                  <span className="text-xs uppercase tracking-[0.25em] text-white/45">Identity summary</span>
-                  <textarea
-                    rows={3}
-                    value={personaForm.identitySummary}
-                    onChange={(event) => handlePersonaFieldChange("identitySummary", event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                    placeholder="Investor focused on leverage, timing, and long-term upside."
-                  />
-                </label>
-
-                <label className="grid gap-2">
-                  <span className="text-xs uppercase tracking-[0.25em] text-white/45">Worldview</span>
-                  <textarea
-                    rows={3}
-                    value={personaForm.worldview}
-                    onChange={(event) => handlePersonaFieldChange("worldview", event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                    placeholder="One belief per line, or comma separated."
-                  />
-                </label>
-
-                <label className="grid gap-2">
-                  <span className="text-xs uppercase tracking-[0.25em] text-white/45">Values</span>
-                  <textarea
-                    rows={2}
-                    value={personaForm.values}
-                    onChange={(event) => handlePersonaFieldChange("values", event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                    placeholder="Clarity, compounding, low-regret decisions"
-                  />
-                </label>
-
-                <button
-                  type="submit"
-                  disabled={isCreatingPersona || isGeneratingDraft}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:bg-[var(--color-brand-accent-amber)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isCreatingPersona || isGeneratingDraft ? (
-                    <>
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                      {personaForm.personaType === "real_person" ? "Generating draft" : "Adding advisor"}
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4" />
-                      {personaForm.personaType === "real_person" ? "Generate review draft" : "Add to council"}
-                    </>
-                  )}
-                </button>
-              </form>
-
-              {draftReview && (
-                <div className="mt-5 rounded-[1.5rem] border border-[var(--color-brand-accent)]/20 bg-[var(--color-brand-accent)]/8 p-4">
-                  <div className="flex items-start justify-between gap-4">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
+              <div className="space-y-6">
+                <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl md:p-6">
+                  <p className="text-xs uppercase tracking-[0.25em] text-white/45">Step 1</p>
+                  <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-brand-accent-amber)]">
-                        Draft review
+                      <h2 className="text-2xl font-semibold text-white">Give the council a point of view</h2>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">
+                        The name becomes the frame for every session. Keep it short and functional.
                       </p>
-                      <h3 className="mt-2 text-lg font-semibold text-white">
-                        {draftReview.draft_profile.display_name}
-                      </h3>
                     </div>
-                    <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/60">
-                      {draftReview.review_status}
-                    </span>
+                    <div className="w-full max-w-xl">
+                      <label className="grid gap-2">
+                        <span className="text-xs uppercase tracking-[0.25em] text-white/45">Council name</span>
+                        <div className="flex gap-2">
+                          <input
+                            value={councilNameDraft}
+                            onChange={(event) => setCouncilNameDraft(event.target.value)}
+                            className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                            placeholder="Founder Council"
+                          />
+                          <button
+                            onClick={handleSaveCouncilName}
+                            disabled={isSavingCouncilName}
+                            className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:bg-[var(--color-brand-accent-amber)] disabled:opacity-60"
+                          >
+                            {isSavingCouncilName ? "Saving..." : "Save"}
+                          </button>
+                        </div>
+                      </label>
+                    </div>
                   </div>
+                </section>
 
-                  <div className="mt-4 grid gap-4">
+                <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl md:p-6">
+                  <p className="text-xs uppercase tracking-[0.25em] text-white/45">Step 2</p>
+                  <div className="mt-2 flex flex-col gap-6">
+                    <div>
+                      <h2 className="text-2xl font-semibold text-white">Choose how to build the first bench</h2>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">
+                        Start with a generated three-advisor council, or add custom and real-person-inspired
+                        personas one by one.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+                      <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.25em] text-white/45">Fastest path</p>
+                        <h3 className="mt-2 text-lg font-semibold text-white">Generate a starter council</h3>
+                        <p className="mt-2 text-sm leading-6 text-white/60">
+                          Strategist, Operator, and Skeptic. Enough contrast to start testing the core loop.
+                        </p>
+                        <button
+                          onClick={handleSeedCouncil}
+                          disabled={isSeedingCouncil || activeMemberCount >= (council?.max_personas ?? 5)}
+                          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isSeedingCouncil ? (
+                            <>
+                              <LoaderCircle className="h-4 w-4 animate-spin" />
+                              Building starter council
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-4 w-4" />
+                              Generate starter council
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.25em] text-white/45">Manual path</p>
+                        <h3 className="mt-2 text-lg font-semibold text-white">Add one advisor</h3>
+                        <form className="mt-4 grid gap-4" onSubmit={handleCreatePersona}>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <label className="grid gap-2">
+                              <span className="text-xs uppercase tracking-[0.25em] text-white/45">Name</span>
+                              <input
+                                required
+                                value={personaForm.displayName}
+                                onChange={(event) => handlePersonaFieldChange("displayName", event.target.value)}
+                                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                                placeholder="The Contrarian"
+                              />
+                            </label>
+
+                            <label className="grid gap-2">
+                              <span className="text-xs uppercase tracking-[0.25em] text-white/45">Type</span>
+                              <select
+                                value={personaForm.personaType}
+                                onChange={(event) =>
+                                  handlePersonaFieldChange(
+                                    "personaType",
+                                    event.target.value as PersonaFormState["personaType"],
+                                  )
+                                }
+                                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                              >
+                                <option value="custom">Custom advisor</option>
+                                <option value="real_person">Real-person-inspired</option>
+                              </select>
+                            </label>
+                          </div>
+
+                          <label className="grid gap-2">
+                            <span className="text-xs uppercase tracking-[0.25em] text-white/45">Identity summary</span>
+                            <textarea
+                              rows={3}
+                              value={personaForm.identitySummary}
+                              onChange={(event) => handlePersonaFieldChange("identitySummary", event.target.value)}
+                              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                              placeholder="An advisor who optimizes for downside protection and hidden incentives."
+                            />
+                          </label>
+
+                          {personaForm.personaType === "custom" && (
+                            <>
+                              <label className="grid gap-2">
+                                <span className="text-xs uppercase tracking-[0.25em] text-white/45">Worldview</span>
+                                <textarea
+                                  rows={3}
+                                  value={personaForm.worldview}
+                                  onChange={(event) => handlePersonaFieldChange("worldview", event.target.value)}
+                                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                                  placeholder="One belief per line, or comma separated."
+                                />
+                              </label>
+
+                              <label className="grid gap-2">
+                                <span className="text-xs uppercase tracking-[0.25em] text-white/45">Values</span>
+                                <textarea
+                                  rows={2}
+                                  value={personaForm.values}
+                                  onChange={(event) => handlePersonaFieldChange("values", event.target.value)}
+                                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                                  placeholder="Clarity, discipline, low-regret action"
+                                />
+                              </label>
+                            </>
+                          )}
+
+                          <button
+                            type="submit"
+                            disabled={isCreatingPersona || isGeneratingDraft}
+                            className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:bg-[var(--color-brand-accent-amber)] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isCreatingPersona || isGeneratingDraft ? (
+                              <>
+                                <LoaderCircle className="h-4 w-4 animate-spin" />
+                                {personaForm.personaType === "real_person" ? "Generating draft" : "Adding advisor"}
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="h-4 w-4" />
+                                {personaForm.personaType === "real_person" ? "Create review draft" : "Add advisor"}
+                              </>
+                            )}
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {draftReview && (
+                  <section className="rounded-[2rem] border border-[var(--color-brand-accent)]/20 bg-[var(--color-brand-accent)]/8 p-5 backdrop-blur-xl md:p-6">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-brand-accent-amber)]">
+                          Draft review
+                        </p>
+                        <h2 className="mt-2 text-2xl font-semibold text-white">
+                          {draftReview.draft_profile.display_name}
+                        </h2>
+                      </div>
+                      <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/60">
+                        {draftReview.review_status}
+                      </span>
+                    </div>
+
                     {draftReview.review_status === "generating" && (
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm leading-6 text-white/75">
-                        Discovery is still running. Sources, warnings, and profile signals will update when the job finishes.
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm leading-6 text-white/75">
+                        Discovery is still running. Review signals and sources will appear here when the job completes.
                       </div>
                     )}
 
-                    <label className="grid gap-2">
-                      <span className="text-xs uppercase tracking-[0.25em] text-white/45">
-                        Identity summary
-                      </span>
-                      <textarea
-                        rows={3}
-                        value={draftEditor?.identitySummary ?? ""}
-                        onChange={(event) =>
-                          setDraftEditor((current) =>
-                            current ? { ...current, identitySummary: event.target.value } : current,
-                          )
-                        }
-                        className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                      />
-                    </label>
+                    {(draftReview.draft_profile.warnings?.length ?? 0) > 0 && (
+                      <div className="mt-4 rounded-2xl border border-[var(--color-brand-accent-amber)]/25 bg-[var(--color-brand-accent-amber)]/10 px-4 py-4">
+                        <span className="text-xs uppercase tracking-[0.25em] text-[var(--color-brand-accent-amber)]">
+                          Evidence warnings
+                        </span>
+                        <ul className="mt-3 space-y-2 text-sm leading-6 text-white/80">
+                          {draftReview.draft_profile.warnings?.map((warning) => (
+                            <li key={warning}>• {warning}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
-                    <label className="grid gap-2">
-                      <span className="text-xs uppercase tracking-[0.25em] text-white/45">Worldview</span>
+                    <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+                      <div className="grid gap-4">
+                        <label className="grid gap-2">
+                          <span className="text-xs uppercase tracking-[0.25em] text-white/45">Identity summary</span>
+                          <textarea
+                            rows={3}
+                            value={draftEditor?.identitySummary ?? ""}
+                            onChange={(event) =>
+                              setDraftEditor((current) =>
+                                current ? { ...current, identitySummary: event.target.value } : current,
+                              )
+                            }
+                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                          />
+                        </label>
+
+                        <label className="grid gap-2">
+                          <span className="text-xs uppercase tracking-[0.25em] text-white/45">Worldview</span>
+                          <textarea
+                            rows={4}
+                            value={draftEditor?.worldview ?? ""}
+                            onChange={(event) =>
+                              setDraftEditor((current) =>
+                                current ? { ...current, worldview: event.target.value } : current,
+                              )
+                            }
+                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                          />
+                        </label>
+
+                        <label className="grid gap-2">
+                          <span className="text-xs uppercase tracking-[0.25em] text-white/45">Values</span>
+                          <textarea
+                            rows={3}
+                            value={draftEditor?.values ?? ""}
+                            onChange={(event) =>
+                              setDraftEditor((current) =>
+                                current ? { ...current, values: event.target.value } : current,
+                              )
+                            }
+                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.25em] text-white/45">Draft sources</p>
+                            <p className="mt-2 text-sm leading-6 text-white/60">
+                              Attach real excerpts before approval if the profile needs stronger grounding.
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/60">
+                            {draftReview.sources.length}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          {draftReview.sources.length === 0 ? (
+                            <p className="text-sm leading-6 text-white/55">
+                              No sources attached yet.
+                            </p>
+                          ) : (
+                            draftReview.sources.map((source) => (
+                              <div key={source.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
+                                <a
+                                  href={source.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-sm font-semibold text-white underline-offset-4 hover:underline"
+                                >
+                                  {source.title || source.url}
+                                </a>
+                                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/45">
+                                  {source.source_type} · quality {source.quality_score !== null ? source.quality_score.toFixed(2) : "n/a"}
+                                </p>
+                                {source.notes_excerpt && (
+                                  <p className="mt-2 text-sm leading-6 text-white/65">{source.notes_excerpt}</p>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                      <input
+                        value={draftSourceForm.url}
+                        onChange={(event) => setDraftSourceForm((current) => ({ ...current, url: event.target.value }))}
+                        className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                        placeholder="https://example.com/interview"
+                      />
+                      <input
+                        value={draftSourceForm.title}
+                        onChange={(event) => setDraftSourceForm((current) => ({ ...current, title: event.target.value }))}
+                        className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                        placeholder="Source title"
+                      />
                       <textarea
                         rows={4}
-                        value={draftEditor?.worldview ?? ""}
-                        onChange={(event) =>
-                          setDraftEditor((current) =>
-                            current ? { ...current, worldview: event.target.value } : current,
-                          )
-                        }
-                        className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                        value={draftSourceForm.content}
+                        onChange={(event) => setDraftSourceForm((current) => ({ ...current, content: event.target.value }))}
+                        className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 outline-none transition focus:border-[var(--color-brand-accent)]"
+                        placeholder="Optional excerpt. Leave blank to fetch from the URL."
                       />
-                    </label>
-
-                    <label className="grid gap-2">
-                      <span className="text-xs uppercase tracking-[0.25em] text-white/45">Values</span>
-                      <textarea
-                        rows={3}
-                        value={draftEditor?.values ?? ""}
-                        onChange={(event) =>
-                          setDraftEditor((current) =>
-                            current ? { ...current, values: event.target.value } : current,
-                          )
-                        }
-                        className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                      />
-                    </label>
-
-                    <div className="rounded-[1.25rem] border border-white/10 bg-black/20 p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <span className="text-xs uppercase tracking-[0.25em] text-white/45">Draft sources</span>
-                          <p className="mt-2 text-sm leading-6 text-white/65">
-                            Attach concrete public-material excerpts before approval. These sources will carry into the approved persona.
-                          </p>
-                        </div>
-                        <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/60">
-                          {draftReview.sources.length} sources
-                        </span>
-                      </div>
-
-                      {(draftReview.draft_profile.warnings?.length ?? 0) > 0 && (
-                        <div className="mt-4 rounded-2xl border border-[var(--color-brand-accent-amber)]/25 bg-[var(--color-brand-accent-amber)]/10 px-4 py-4">
-                          <span className="text-xs uppercase tracking-[0.25em] text-[var(--color-brand-accent-amber)]">
-                            Evidence warnings
-                          </span>
-                          <ul className="mt-3 space-y-2 text-sm leading-6 text-white/80">
-                            {draftReview.draft_profile.warnings?.map((warning) => (
-                              <li key={warning}>• {warning}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      <div className="mt-4 space-y-3">
-                        {draftReview.sources.length === 0 ? (
-                          <p className="text-sm leading-6 text-white/55">
-                            No draft sources yet. Add a source URL now, with an optional excerpt, before approval if you want stronger grounding.
-                          </p>
-                        ) : (
-                          draftReview.sources.map((source) => (
-                            <div key={source.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
-                              <a
-                                href={source.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-sm font-semibold text-white underline-offset-4 hover:underline"
-                              >
-                                {source.title || source.url}
-                              </a>
-                              <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/45">
-                                {source.source_type} · quality{" "}
-                                {source.quality_score !== null ? source.quality_score.toFixed(2) : "n/a"}
-                              </p>
-                              {source.notes_excerpt && (
-                                <p className="mt-2 text-sm leading-6 text-white/65">{source.notes_excerpt}</p>
-                              )}
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                      <div className="mt-4 grid gap-3">
-                        <input
-                          value={draftSourceForm.url}
-                          onChange={(event) => setDraftSourceForm((current) => ({ ...current, url: event.target.value }))}
-                          className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                          placeholder="https://example.com/interview"
-                        />
-                        <input
-                          value={draftSourceForm.title}
-                          onChange={(event) => setDraftSourceForm((current) => ({ ...current, title: event.target.value }))}
-                          className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                          placeholder="Source title"
-                        />
-                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_120px]">
-                          <input
-                            value={draftSourceForm.publisher}
-                            onChange={(event) => setDraftSourceForm((current) => ({ ...current, publisher: event.target.value }))}
-                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                            placeholder="Publisher"
-                          />
-                          <select
-                            value={draftSourceForm.sourceType}
-                            onChange={(event) => setDraftSourceForm((current) => ({ ...current, sourceType: event.target.value }))}
-                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                          >
-                            <option value="official_website">Official site</option>
-                            <option value="book">Book</option>
-                            <option value="interview">Interview</option>
-                            <option value="talk">Talk</option>
-                            <option value="biography">Biography</option>
-                            <option value="reference">Reference</option>
-                            <option value="other">Other</option>
-                          </select>
-                          <input
-                            value={draftSourceForm.qualityScore}
-                            onChange={(event) => setDraftSourceForm((current) => ({ ...current, qualityScore: event.target.value }))}
-                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                            placeholder="0.7"
-                          />
-                        </div>
-                        <label className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-white/55">
-                          <input
-                            type="checkbox"
-                            checked={draftSourceForm.isPrimary}
-                            onChange={(event) => setDraftSourceForm((current) => ({ ...current, isPrimary: event.target.checked }))}
-                          />
-                          Mark as primary source
-                        </label>
-                        <textarea
-                          rows={4}
-                          value={draftSourceForm.content}
-                          onChange={(event) => setDraftSourceForm((current) => ({ ...current, content: event.target.value }))}
-                          className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 outline-none transition focus:border-[var(--color-brand-accent)]"
-                          placeholder="Optional: paste the source excerpt, or leave blank to fetch from the URL."
-                        />
+                      <div className="flex flex-wrap gap-3">
                         <button
                           type="button"
                           onClick={handleAddDraftSource}
@@ -1068,359 +1026,486 @@ export default function WorkspacePage() {
                               Saving source
                             </>
                           ) : (
-                            "Attach source to draft"
+                            "Attach source"
                           )}
                         </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={handleSaveDraft}
-                      disabled={isSavingDraft || draftReview.review_status === "generating"}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black/30 disabled:opacity-60"
-                    >
-                      {isSavingDraft ? (
-                        <>
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
-                          Saving
-                        </>
-                      ) : (
-                        "Save edits"
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleApproveDraft}
-                      disabled={isApprovingDraft || draftReview.review_status !== "ready"}
-                      className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:bg-[var(--color-brand-accent-amber)] disabled:opacity-60"
-                    >
-                      {isApprovingDraft ? (
-                        <>
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
-                          Approving
-                        </>
-                      ) : (
-                        "Approve and add to council"
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDraftReview(null);
-                        setDraftEditor(null);
-                      }}
-                      className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black/30"
-                    >
-                      Clear draft
-                    </button>
-                    {draftReview.review_status === "failed" && draftReview.job_id && (
-                      <button
-                        type="button"
-                        onClick={handleRetryDraftDiscovery}
-                        disabled={isRetryingDraftJob}
-                        className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black/30 disabled:opacity-60"
-                      >
-                        {isRetryingDraftJob ? "Retrying..." : "Retry discovery"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
-
-            <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.25em] text-white/45">Council members</p>
-                  <h2 className="mt-1 text-xl font-semibold text-white">Current bench</h2>
-                </div>
-                <span className="text-sm text-white/50">{personas.length} total</span>
-              </div>
-
-              <div className="mt-5 space-y-3">
-                {personas.length === 0 && (
-                  <div className="rounded-[1.5rem] border border-dashed border-white/10 px-4 py-6 text-sm leading-6 text-white/55">
-                    No personas yet. Add three advisors to unlock the council query loop.
-                  </div>
-                )}
-
-                {personas.map((persona) => (
-                  <div
-                    key={persona.id}
-                    className="rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-4"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-semibold text-white">{persona.display_name}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.25em] text-white/45">
-                          {persona.persona_type === "real_person" ? "Real-person-inspired" : "Custom advisor"}
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/60">
-                        {persona.status}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-white/65">
-                      {persona.identity_summary || "No identity summary yet."}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs uppercase tracking-[0.2em] text-white/45">
-                      <span>{persona.source_count} sources</span>
-                      <span>
-                        quality {persona.source_quality_score !== null ? persona.source_quality_score.toFixed(2) : "n/a"}
-                      </span>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void handleTogglePersonaSources(persona.id)}
-                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white/70 transition hover:bg-white/10"
-                      >
-                        Sources
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeactivatePersona(persona.id)}
-                        disabled={
-                          persona.status !== "active" ||
-                          personaActionId === persona.id ||
-                          activeMemberCount <= (council?.min_personas ?? 3)
-                        }
-                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {personaActionId === persona.id ? (
-                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <PauseCircle className="h-3.5 w-3.5" />
-                        )}
-                        Deactivate
-                      </button>
-                    </div>
-
-                    {expandedPersonaId === persona.id && (
-                      <div className="mt-4 space-y-4 rounded-[1.25rem] border border-white/10 bg-black/25 p-4">
-                        <div className="space-y-3">
-                          {(personaSources[persona.id] ?? []).length === 0 ? (
-                            <p className="text-sm leading-6 text-white/55">
-                              No external sources attached yet. Add one below to ground this advisor beyond the internal profile.
-                            </p>
-                          ) : (
-                            (personaSources[persona.id] ?? []).map((source) => (
-                              <div key={source.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <a
-                                      href={source.url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-sm font-semibold text-white underline-offset-4 hover:underline"
-                                    >
-                                      {source.title || source.url}
-                                    </a>
-                                    <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/45">
-                                      {source.source_type} · {source.chunk_count} chunks · quality{" "}
-                                      {source.quality_score !== null ? source.quality_score.toFixed(2) : "n/a"}
-                                    </p>
-                                  </div>
-                                  {source.is_primary && (
-                                    <span className="rounded-full border border-[var(--color-brand-accent-amber)]/20 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-[var(--color-brand-accent-amber)]">
-                                      Primary
-                                    </span>
-                                  )}
-                                </div>
-                                {source.notes_excerpt && (
-                                  <p className="mt-2 text-sm leading-6 text-white/65">{source.notes_excerpt}</p>
-                                )}
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        <div className="grid gap-3">
-                          <input
-                            value={sourceForms[persona.id]?.url ?? ""}
-                            onChange={(event) => handleSourceFieldChange(persona.id, "url", event.target.value)}
-                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                            placeholder="https://example.com/interview"
-                          />
-                          <input
-                            value={sourceForms[persona.id]?.title ?? ""}
-                            onChange={(event) => handleSourceFieldChange(persona.id, "title", event.target.value)}
-                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                            placeholder="Source title"
-                          />
-                          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_120px]">
-                            <input
-                              value={sourceForms[persona.id]?.publisher ?? ""}
-                              onChange={(event) => handleSourceFieldChange(persona.id, "publisher", event.target.value)}
-                              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                              placeholder="Publisher"
-                            />
-                            <select
-                              value={sourceForms[persona.id]?.sourceType ?? "reference"}
-                              onChange={(event) => handleSourceFieldChange(persona.id, "sourceType", event.target.value)}
-                              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                            >
-                              <option value="official_website">Official site</option>
-                              <option value="book">Book</option>
-                              <option value="interview">Interview</option>
-                              <option value="talk">Talk</option>
-                              <option value="biography">Biography</option>
-                              <option value="reference">Reference</option>
-                              <option value="other">Other</option>
-                            </select>
-                            <input
-                              value={sourceForms[persona.id]?.qualityScore ?? "0.7"}
-                              onChange={(event) => handleSourceFieldChange(persona.id, "qualityScore", event.target.value)}
-                              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                              placeholder="0.7"
-                            />
-                          </div>
-                          <label className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-white/55">
-                            <input
-                              type="checkbox"
-                              checked={sourceForms[persona.id]?.isPrimary ?? false}
-                              onChange={(event) => handleSourceFieldChange(persona.id, "isPrimary", event.target.checked)}
-                            />
-                            Mark as primary source
-                          </label>
-                          <textarea
-                            rows={5}
-                            value={sourceForms[persona.id]?.content ?? ""}
-                            onChange={(event) => handleSourceFieldChange(persona.id, "content", event.target.value)}
-                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 outline-none transition focus:border-[var(--color-brand-accent)]"
-                            placeholder="Optional: paste the relevant excerpt, or leave blank to fetch from the URL."
-                          />
+                        <button
+                          type="button"
+                          onClick={handleSaveDraft}
+                          disabled={isSavingDraft || draftReview.review_status === "generating"}
+                          className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black/30 disabled:opacity-60"
+                        >
+                          {isSavingDraft ? "Saving..." : "Save edits"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleApproveDraft}
+                          disabled={isApprovingDraft || draftReview.review_status !== "ready"}
+                          className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:bg-[var(--color-brand-accent-amber)] disabled:opacity-60"
+                        >
+                          {isApprovingDraft ? "Approving..." : "Approve and add to council"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDraftReview(null);
+                            setDraftEditor(null);
+                          }}
+                          className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black/30"
+                        >
+                          Clear draft
+                        </button>
+                        {draftReview.review_status === "failed" && draftReview.job_id && (
                           <button
                             type="button"
-                            onClick={() => void handleAddPersonaSource(persona.id)}
-                            disabled={sourceActionPersonaId === persona.id}
-                            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60"
+                            onClick={handleRetryDraftDiscovery}
+                            disabled={isRetryingDraftJob}
+                            className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black/30 disabled:opacity-60"
                           >
-                            {sourceActionPersonaId === persona.id ? (
-                              <>
-                                <LoaderCircle className="h-4 w-4 animate-spin" />
-                                Saving source
-                              </>
+                            {isRetryingDraftJob ? "Retrying..." : "Retry discovery"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                )}
+              </div>
+
+              <aside className="space-y-6">
+                <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl">
+                  <p className="text-xs uppercase tracking-[0.25em] text-white/45">Step 3</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">Unlock the chat loop</h2>
+                  <div className="mt-4 rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-white/70">Active advisors</span>
+                      <span className="font-semibold text-white">
+                        {activeMemberCount} / {council?.min_personas ?? 3}
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/8">
+                      <div
+                        className="h-full rounded-full bg-[var(--color-brand-accent)] transition-all"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            (activeMemberCount / Math.max(council?.min_personas ?? 3, 1)) * 100,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-white/60">
+                      {activeMemberCount >= (council?.min_personas ?? 3)
+                        ? "Setup complete. The workspace will switch to chat automatically."
+                        : "Add at least three active personas. Once you cross the minimum, this page becomes the chat workspace."}
+                    </p>
+                  </div>
+                </section>
+
+                <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.25em] text-white/45">Current bench</p>
+                      <h2 className="mt-1 text-xl font-semibold text-white">Advisors in progress</h2>
+                    </div>
+                    <span className="text-sm text-white/50">{personas.length} total</span>
+                  </div>
+
+                  <div className="mt-5 space-y-3">
+                    {personas.length === 0 && (
+                      <div className="rounded-[1.5rem] border border-dashed border-white/10 px-4 py-6 text-sm leading-6 text-white/55">
+                        No personas yet. Generate the starter council or add advisors manually.
+                      </div>
+                    )}
+
+                    {personas.map((persona) => (
+                      <div
+                        key={persona.id}
+                        className="rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-4"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="font-semibold text-white">{persona.display_name}</p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.25em] text-white/45">
+                              {persona.persona_type === "real_person" ? "Real-person-inspired" : "Custom advisor"}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/60">
+                            {persona.status}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-white/65">
+                          {persona.identity_summary || "No identity summary yet."}
+                        </p>
+                        <div className="mt-4 flex items-center justify-between text-xs uppercase tracking-[0.2em] text-white/45">
+                          <span>{persona.source_count} sources</span>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeactivatePersona(persona.id)}
+                            disabled={
+                              persona.status !== "active" ||
+                              personaActionId === persona.id ||
+                              activeMemberCount <= (council?.min_personas ?? 3)
+                            }
+                            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {personaActionId === persona.id ? (
+                              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                             ) : (
-                              "Attach source"
+                              <PauseCircle className="h-3.5 w-3.5" />
                             )}
+                            Deactivate
                           </button>
                         </div>
                       </div>
-                    )}
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          </aside>
-
-          <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl md:p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-white/45">Conversation</p>
-                <h2 className="mt-1 text-2xl font-semibold text-white">Run the council loop</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">
-                  Ask one decision-quality question. The backend will dispatch your prompt to every active
-                  persona, persist each card, and synthesize the result.
-                </p>
-              </div>
-
-              <button
-                onClick={handleCreateConversation}
-                disabled={isCreatingConversation}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60"
-              >
-                {isCreatingConversation ? (
-                  <>
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                    Creating
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4" />
-                    New conversation
-                  </>
-                )}
-              </button>
+                </section>
+              </aside>
             </div>
-
-            <div className="mt-6 grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
-              <div className="space-y-3">
-                {conversations.length === 0 && (
-                  <div className="rounded-[1.5rem] border border-dashed border-white/10 px-4 py-5 text-sm leading-6 text-white/55">
-                    No threads yet. Start a conversation once your council has enough advisors.
-                  </div>
-                )}
-
-                {conversations.map((conversation) => {
-                  const isActive = conversation.id === activeConversationId;
-                  return (
-                    <button
-                      key={conversation.id}
-                      onClick={() => void handleSelectConversation(conversation.id)}
-                      className={`w-full rounded-[1.5rem] border px-4 py-4 text-left transition ${
-                        isActive
-                          ? "border-[var(--color-brand-accent)]/60 bg-[var(--color-brand-accent)]/12"
-                          : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-black/30"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-white">
-                          {conversation.title || "Untitled conversation"}
-                        </p>
-                        <MessageSquareText className="h-4 w-4 text-white/45" />
-                      </div>
-                      <p className="mt-2 text-xs uppercase tracking-[0.25em] text-white/45">
-                        {conversation.message_count} messages
-                      </p>
-                      <p className="mt-3 text-sm text-white/60">
-                        Updated {formatDate(conversation.updated_at)}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="flex min-h-[640px] flex-col rounded-[1.75rem] border border-white/10 bg-black/20">
-                <div className="border-b border-white/10 px-5 py-4">
-                  <p className="text-xs uppercase tracking-[0.25em] text-white/45">Active thread</p>
-                  <h3 className="mt-1 text-xl font-semibold text-white">
-                    {activeConversation?.title || "Council session"}
-                  </h3>
+          </>
+        ) : (
+          <>
+            <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.04)] px-5 py-6 shadow-[0_24px_80px_rgba(0,0,0,0.2)] backdrop-blur-xl md:px-8">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                <div className="max-w-3xl">
+                  <p className="text-xs uppercase tracking-[0.35em] text-[var(--color-brand-accent-amber)]">
+                    Council chat
+                  </p>
+                  <h1 className="mt-3 font-serif text-4xl italic tracking-tight text-white md:text-5xl">
+                    {council?.name ?? "My Council"}
+                  </h1>
+                  <p className="mt-3 text-sm leading-7 text-white/70 md:text-base">
+                    The onboarding layer is done. What remains is the actual product: a normal chat UI that lets
+                    you ask one question and inspect the council&apos;s distinct responses.
+                  </p>
                 </div>
 
-                <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-                  {!readyToQuery && (
-                    <div className="rounded-[1.5rem] border border-dashed border-[var(--color-brand-accent-amber)]/25 bg-[var(--color-brand-accent-amber)]/8 px-4 py-5 text-sm leading-6 text-white/75">
-                      Add at least three active personas to unlock the chat loop. The backend currently enforces
-                      that minimum before a message can run.
-                    </div>
-                  )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-4 text-sm">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-white/45">Active advisors</p>
+                    <p className="mt-2 text-2xl font-semibold text-white">{activeMemberCount}</p>
+                    <p className="mt-1 text-white/60">{user?.display_name ?? user?.email ?? "Demo user"}</p>
+                  </div>
+                  <div className="rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-4 text-sm">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-white/45">Backend</p>
+                    <a
+                      href={API_BASE_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 block text-base font-semibold text-[var(--color-brand-accent)] underline-offset-4 hover:underline"
+                    >
+                      {API_BASE_URL}
+                    </a>
+                    {isSupabaseConfigured() && (
+                      <button
+                        onClick={handleSignOut}
+                        disabled={isSigningOut}
+                        className="mt-3 text-white/70 transition hover:text-white disabled:opacity-60"
+                      >
+                        {isSigningOut ? "Signing out..." : "Sign out"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
 
-                  {readyToQuery && activeConversation?.turns.length === 0 && (
+            <div className="grid gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
+              <aside className="space-y-6">
+                <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-2xl bg-white/6 p-3 text-[var(--color-brand-accent)]">
+                      <Users className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.25em] text-white/45">Council</p>
+                      <h2 className="text-xl font-semibold text-white">Active bench</h2>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 space-y-3">
+                    {activePersonas.map((persona) => (
+                      <div key={persona.id} className="rounded-[1.25rem] border border-white/10 bg-black/20 px-4 py-3">
+                        <p className="font-medium text-white">{persona.display_name}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/45">
+                          {persona.persona_type === "real_person" ? "Real-person-inspired" : "Custom advisor"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <details className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-4">
+                    <summary className="cursor-pointer list-none text-sm font-semibold text-white">
+                      Manage council
+                    </summary>
+
+                    <div className="mt-4 grid gap-4">
+                      <div className="grid gap-2">
+                        <span className="text-xs uppercase tracking-[0.25em] text-white/45">Council name</span>
+                        <div className="flex gap-2">
+                          <input
+                            value={councilNameDraft}
+                            onChange={(event) => setCouncilNameDraft(event.target.value)}
+                            className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                          />
+                          <button
+                            onClick={handleSaveCouncilName}
+                            disabled={isSavingCouncilName}
+                            className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:bg-[var(--color-brand-accent-amber)] disabled:opacity-60"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+
+                      <form className="grid gap-3" onSubmit={handleCreatePersona}>
+                        <input
+                          required
+                          value={personaForm.displayName}
+                          onChange={(event) => handlePersonaFieldChange("displayName", event.target.value)}
+                          className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                          placeholder="Add another advisor"
+                        />
+                        <select
+                          value={personaForm.personaType}
+                          onChange={(event) =>
+                            handlePersonaFieldChange(
+                              "personaType",
+                              event.target.value as PersonaFormState["personaType"],
+                            )
+                          }
+                          className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                        >
+                          <option value="custom">Custom advisor</option>
+                          <option value="real_person">Real-person-inspired</option>
+                        </select>
+                        <textarea
+                          rows={3}
+                          value={personaForm.identitySummary}
+                          onChange={(event) => handlePersonaFieldChange("identitySummary", event.target.value)}
+                          className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                          placeholder="Short brief or research direction"
+                        />
+                        {personaForm.personaType === "custom" && (
+                          <>
+                            <textarea
+                              rows={3}
+                              value={personaForm.worldview}
+                              onChange={(event) => handlePersonaFieldChange("worldview", event.target.value)}
+                              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                              placeholder="Worldview"
+                            />
+                            <textarea
+                              rows={2}
+                              value={personaForm.values}
+                              onChange={(event) => handlePersonaFieldChange("values", event.target.value)}
+                              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                              placeholder="Values"
+                            />
+                          </>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={isCreatingPersona || isGeneratingDraft}
+                          className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:bg-[var(--color-brand-accent-amber)] disabled:opacity-60"
+                        >
+                          {isCreatingPersona || isGeneratingDraft ? "Working..." : "Add advisor"}
+                        </button>
+                      </form>
+
+                      {personas.map((persona) => (
+                        <div key={persona.id} className="rounded-[1.25rem] border border-white/10 bg-white/5 px-3 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-white">{persona.display_name}</p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/45">
+                                {persona.status} · {persona.source_count} sources
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleTogglePersonaSources(persona.id)}
+                                className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70 transition hover:bg-black/30"
+                              >
+                                Sources
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeactivatePersona(persona.id)}
+                                disabled={
+                                  persona.status !== "active" ||
+                                  personaActionId === persona.id ||
+                                  activeMemberCount <= (council?.min_personas ?? 3)
+                                }
+                                className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70 transition hover:bg-black/30 disabled:opacity-50"
+                              >
+                                {personaActionId === persona.id ? "..." : "Deactivate"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {expandedPersonaId === persona.id && (
+                            <div className="mt-4 space-y-4 rounded-[1.25rem] border border-white/10 bg-black/25 p-4">
+                              <div className="space-y-3">
+                                {(personaSources[persona.id] ?? []).length === 0 ? (
+                                  <p className="text-sm leading-6 text-white/55">
+                                    No external sources attached yet.
+                                  </p>
+                                ) : (
+                                  (personaSources[persona.id] ?? []).map((source) => (
+                                    <div key={source.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <a
+                                            href={source.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-sm font-semibold text-white underline-offset-4 hover:underline"
+                                          >
+                                            {source.title || source.url}
+                                          </a>
+                                          <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/45">
+                                            {source.source_type} · {source.chunk_count} chunks · quality{" "}
+                                            {source.quality_score !== null ? source.quality_score.toFixed(2) : "n/a"}
+                                          </p>
+                                        </div>
+                                        {source.is_primary && (
+                                          <span className="rounded-full border border-[var(--color-brand-accent-amber)]/20 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-[var(--color-brand-accent-amber)]">
+                                            Primary
+                                          </span>
+                                        )}
+                                      </div>
+                                      {source.notes_excerpt && (
+                                        <p className="mt-2 text-sm leading-6 text-white/65">{source.notes_excerpt}</p>
+                                      )}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+
+                              <div className="grid gap-3">
+                                <input
+                                  value={sourceForms[persona.id]?.url ?? ""}
+                                  onChange={(event) => handleSourceFieldChange(persona.id, "url", event.target.value)}
+                                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                                  placeholder="https://example.com/interview"
+                                />
+                                <input
+                                  value={sourceForms[persona.id]?.title ?? ""}
+                                  onChange={(event) => handleSourceFieldChange(persona.id, "title", event.target.value)}
+                                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
+                                  placeholder="Source title"
+                                />
+                                <textarea
+                                  rows={4}
+                                  value={sourceForms[persona.id]?.content ?? ""}
+                                  onChange={(event) => handleSourceFieldChange(persona.id, "content", event.target.value)}
+                                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 outline-none transition focus:border-[var(--color-brand-accent)]"
+                                  placeholder="Optional excerpt. Leave blank to fetch from the URL."
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void handleAddPersonaSource(persona.id)}
+                                  disabled={sourceActionPersonaId === persona.id}
+                                  className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60"
+                                >
+                                  {sourceActionPersonaId === persona.id ? "Saving..." : "Attach source"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </section>
+
+                <section className="rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] p-5 backdrop-blur-xl">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.25em] text-white/45">Threads</p>
+                      <h2 className="mt-1 text-xl font-semibold text-white">Conversation history</h2>
+                    </div>
+                    <button
+                      onClick={handleCreateConversation}
+                      disabled={isCreatingConversation}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60"
+                    >
+                      {isCreatingConversation ? "Creating..." : "New"}
+                    </button>
+                  </div>
+
+                  <div className="mt-5 space-y-3">
+                    {conversations.length === 0 && (
+                      <div className="rounded-[1.5rem] border border-dashed border-white/10 px-4 py-5 text-sm leading-6 text-white/55">
+                        No threads yet. Start a conversation when you are ready.
+                      </div>
+                    )}
+
+                    {conversations.map((conversation) => {
+                      const isActive = conversation.id === activeConversationId;
+                      return (
+                        <button
+                          key={conversation.id}
+                          onClick={() => void handleSelectConversation(conversation.id)}
+                          className={`w-full rounded-[1.5rem] border px-4 py-4 text-left transition ${
+                            isActive
+                              ? "border-[var(--color-brand-accent)]/60 bg-[var(--color-brand-accent)]/12"
+                              : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-black/30"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="font-medium text-white">
+                              {conversation.title || "Untitled conversation"}
+                            </p>
+                            <MessageSquareText className="h-4 w-4 text-white/45" />
+                          </div>
+                          <p className="mt-2 text-xs uppercase tracking-[0.25em] text-white/45">
+                            {conversation.message_count} messages
+                          </p>
+                          <p className="mt-3 text-sm text-white/60">Updated {formatDate(conversation.updated_at)}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              </aside>
+
+              <section className="flex min-h-[760px] flex-col rounded-[2rem] border border-white/10 bg-[rgba(255,255,255,0.03)] backdrop-blur-xl">
+                <div className="border-b border-white/10 px-5 py-5 md:px-6">
+                  <p className="text-xs uppercase tracking-[0.25em] text-white/45">Active thread</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">
+                    {activeConversation?.title || "New council session"}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-white/60">
+                    Ask one concrete question. The system will fan it out across the active bench, then return a
+                    synthesis underneath the responses.
+                  </p>
+                </div>
+
+                <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 md:px-6">
+                  {activeConversation?.turns.length === 0 && (
                     <div className="rounded-[1.5rem] border border-dashed border-white/10 px-4 py-5 text-sm leading-6 text-white/55">
-                      This thread is empty. Ask a concrete question like “Should I raise a seed round now?” or
-                      “How should I sequence product, distribution, and pricing?”
+                      This thread is empty. Start with a question like “Should I raise a seed round now?” or
+                      “What is the highest-leverage experiment I should run this month?”
                     </div>
                   )}
 
                   {activeConversation?.turns.map((turn) => (
                     <article key={turn.user_message.id} className="space-y-4">
-                      <div className="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+                      <div className="ml-auto max-w-3xl rounded-[1.5rem] border border-white/10 bg-white/6 px-4 py-4">
                         <p className="text-xs uppercase tracking-[0.25em] text-white/45">
                           You · {formatDate(turn.user_message.created_at)}
                         </p>
                         <p className="mt-3 text-base leading-7 text-white">{turn.user_message.content}</p>
                       </div>
 
-                      <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="space-y-4">
                         {turn.persona_responses.map((response) => (
                           <div
                             key={response.id}
-                            className="rounded-[1.5rem] border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-4"
+                            className="max-w-4xl rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-4"
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div>
@@ -1448,7 +1533,7 @@ export default function WorkspacePage() {
                             </p>
 
                             {response.recommended_action && (
-                              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/80">
+                              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white/80">
                                 <span className="block text-xs uppercase tracking-[0.25em] text-white/45">
                                   Recommended action
                                 </span>
@@ -1457,7 +1542,7 @@ export default function WorkspacePage() {
                             )}
 
                             {response.evidence_snippets.length > 0 && (
-                              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
                                 <span className="block text-xs uppercase tracking-[0.25em] text-white/45">
                                   Evidence used
                                 </span>
@@ -1486,7 +1571,7 @@ export default function WorkspacePage() {
                       </div>
 
                       {turn.synthesis && (
-                        <div className="rounded-[1.75rem] border border-[var(--color-brand-accent)]/20 bg-[linear-gradient(180deg,rgba(58,125,139,0.14),rgba(255,255,255,0.03))] px-5 py-5">
+                        <div className="max-w-4xl rounded-[1.75rem] border border-[var(--color-brand-accent)]/20 bg-[linear-gradient(180deg,rgba(58,125,139,0.14),rgba(255,255,255,0.03))] px-5 py-5">
                           <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-brand-accent-amber)]">
                             Synthesis
                           </p>
@@ -1527,10 +1612,10 @@ export default function WorkspacePage() {
                   ))}
                 </div>
 
-                <form onSubmit={handleSendMessage} className="border-t border-white/10 px-5 py-4">
+                <form onSubmit={handleSendMessage} className="border-t border-white/10 px-5 py-5 md:px-6">
                   <label className="grid gap-3">
                     <span className="text-xs uppercase tracking-[0.25em] text-white/45">
-                      Ask the council
+                      Message
                     </span>
                     <div className="flex flex-wrap gap-2">
                       {SAMPLE_PROMPTS.map((samplePrompt) => (
@@ -1550,17 +1635,17 @@ export default function WorkspacePage() {
                       onChange={(event) => setPrompt(event.target.value)}
                       placeholder="Should I raise a seed round now, or stay profitable for another six months?"
                       className="rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 outline-none transition focus:border-[var(--color-brand-accent)] disabled:opacity-60"
-                      disabled={!readyToQuery || isSendingMessage}
+                      disabled={isSendingMessage}
                     />
                   </label>
 
                   <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <p className="text-sm leading-6 text-white/55">
-                      Council queries run as queued jobs, then the workspace reloads the completed thread.
+                      Queries run as queued jobs and the thread refreshes when the council completes the turn.
                     </p>
                     <button
                       type="submit"
-                      disabled={!readyToQuery || isSendingMessage || !prompt.trim()}
+                      disabled={isSendingMessage || !prompt.trim()}
                       className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:bg-[var(--color-brand-accent-amber)] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isSendingMessage ? (
@@ -1571,16 +1656,16 @@ export default function WorkspacePage() {
                       ) : (
                         <>
                           <Sparkles className="h-4 w-4" />
-                          Run council query
+                          Send
                         </>
                       )}
                     </button>
                   </div>
                 </form>
-              </div>
+              </section>
             </div>
-          </section>
-        </div>
+          </>
+        )}
       </div>
     </main>
   );

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
   Home, 
-  MessageSquarePlus, 
   Clock, 
   Settings, 
   LogOut,
@@ -55,8 +54,7 @@ export default function Sidebar() {
   };
 
   const navItems = [
-    { name: "Dashboard", href: "/app", icon: Home },
-    { name: "Draft Council", href: "/app/draft", icon: MessageSquarePlus },
+    { name: "Workspace", href: "/app", icon: Home },
     { name: "History", href: "/app/history", icon: Clock },
     { name: "Settings", href: "/app/settings", icon: Settings },
   ];
