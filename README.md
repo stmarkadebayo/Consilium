@@ -17,6 +17,7 @@ A multi-persona advisory web app that lets you assemble a council of 3–5 advis
 ## Quick Start
 
 ```bash
+# Local-first mode: no auth gate, direct workspace access at /app
 # Backend setup
 cd backend
 cp .env.example .env
@@ -29,6 +30,17 @@ cd ../frontend
 cp .env.example .env.local
 npm install
 npm run dev
+```
+
+Open `http://127.0.0.1:3000/app`.
+
+## Full Stack With Docker
+
+```bash
+# Backend setup
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+docker compose up --build
 ```
 
 ## Worker Process
