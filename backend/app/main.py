@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
-from app.db import Base, build_engine, build_session_maker
+from app.db import Base, build_engine, build_session_maker, ensure_postgres_extensions
 from app.providers import build_provider
 from app.routers import auth_router, conversations_router, council_router, jobs_router, personas_router
 from app.services.job_runner_service import JobRunnerService
@@ -38,6 +38,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             retrieval_service=app.state.retrieval_service,
         )
         if app_settings.auto_create_tables:
+            ensure_postgres_extensions(engine)
             Base.metadata.create_all(bind=engine)
         app.state.job_runner.start()
         yield

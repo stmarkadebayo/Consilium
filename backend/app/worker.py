@@ -7,7 +7,7 @@ import sys
 import time
 
 from app.config import get_settings
-from app.db import Base, build_engine, build_session_maker
+from app.db import Base, build_engine, build_session_maker, ensure_postgres_extensions
 from app.services.job_runner_service import JobRunnerService
 
 
@@ -27,6 +27,7 @@ def main() -> int:
     runner = JobRunnerService(settings=settings, session_maker=session_maker)
 
     if settings.auto_create_tables:
+        ensure_postgres_extensions(engine)
         Base.metadata.create_all(bind=engine)
 
     if args.once:

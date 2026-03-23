@@ -16,6 +16,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
     op.create_table(
         "users",
         sa.Column("id", sa.String(length=36), primary_key=True),

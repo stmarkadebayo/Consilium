@@ -20,3 +20,11 @@ def build_engine(database_url: str) -> Engine:
 
 def build_session_maker(engine: Engine) -> sessionmaker:
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+
+def ensure_postgres_extensions(engine: Engine) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
