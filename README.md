@@ -2,7 +2,7 @@
 
 **Your private council of minds.**
 
-A multi-persona advisory web app that lets you assemble a council of 3–5 advisors and ask for guidance on decisions, strategy, writing, problem-solving, and reflection. Each advisor responds from a distinct worldview, and a synthesis highlights agreement, disagreement, and actionable next steps.
+A multi-persona advisory web app that lets you assemble a council of 2–5 advisors and ask for guidance on decisions, strategy, writing, problem-solving, and reflection. Each advisor responds from a distinct worldview, and a synthesis highlights agreement, disagreement, and actionable next steps.
 
 ## Project Structure
 
@@ -17,12 +17,12 @@ A multi-persona advisory web app that lets you assemble a council of 3–5 advis
 ## Quick Start
 
 ```bash
-# Local-first mode: no auth gate, direct workspace access at /app
+# Local-first mode: no auth gate, split landing page at /
 # Backend setup
 cd backend
 cp .env.example .env
 pip install -r requirements.txt
-python -m alembic upgrade head
+python3 -m alembic upgrade head
 uvicorn app.main:app --reload
 
 # Frontend setup
@@ -32,7 +32,7 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:3000/app`.
+Open `http://127.0.0.1:3000/`.
 
 ## Full Stack With Docker
 
@@ -61,7 +61,7 @@ python -m app.worker
 - Put the Supabase Postgres connection string in `backend/.env` as `DATABASE_URL`
 - Set `AUTH_PROVIDER=supabase`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` in `backend/.env`
 - Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local`
-- Run the backend migrations, then sign in through `/auth`
+- Run the backend migrations, then sign in through `/`
 - Mock frontend mode is now opt-in via `NEXT_PUBLIC_USE_MOCK_API=true`
 
 ## Containers
@@ -87,7 +87,7 @@ docker compose -f docker-compose.prod.yml up --build
 ## Verification
 
 ```bash
-cd backend && python -m pytest tests -q
+cd backend && python3 -m pytest tests -q
 cd frontend && npm run lint
 cd frontend && npm run build
 cd frontend && npm run test:e2e
