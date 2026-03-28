@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.graphs.council_query import execute_council_query
+from app.engines.council_reasoning import CouncilReasoningEngine
 from app.models.conversation import Conversation, Message, PersonaResponse
 from app.models.job import Job
 from app.models.user import User
@@ -79,7 +79,7 @@ class ConversationService:
 
         members = CouncilService.active_members(council)
         if len(members) < council.min_personas:
-            raise ValueError("At least 3 active personas are required to query the council")
+            raise ValueError("At least 2 active personas are required to query the council")
 
         next_turn = (db.query(func.max(Message.turn_index)).filter(Message.conversation_id == conversation.id).scalar() or 0) + 1
         message = Message(conversation_id=conversation.id, role="user", content=content, turn_index=next_turn)
@@ -138,14 +138,13 @@ class ConversationService:
 
         members = CouncilService.active_members(council)
         if len(members) < council.min_personas:
-            JobService.mark_failed(job, "At least 3 active personas are required to query the council")
+            JobService.mark_failed(job, "At least 2 active personas are required to query the council")
             return
 
         try:
-            execute_council_query(
+            engine = CouncilReasoningEngine(provider=provider, retrieval_service=retrieval_service)
+            engine.execute(
                 db,
-                provider=provider,
-                retrieval_service=retrieval_service,
                 conversation=conversation,
                 message=message,
                 members=members,
