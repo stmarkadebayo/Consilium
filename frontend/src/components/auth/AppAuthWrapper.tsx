@@ -11,7 +11,7 @@ export default function AppAuthWrapper({ children }: { children: React.ReactNode
 
   useEffect(() => {
     if (!isLoading && isConfigured && !user) {
-      router.replace("/auth");
+      router.replace("/");
     }
   }, [isConfigured, isLoading, router, user]);
 
