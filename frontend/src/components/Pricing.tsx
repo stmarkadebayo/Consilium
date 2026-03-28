@@ -86,7 +86,7 @@ export default function Pricing() {
               </ul>
 
               <Link
-                href="/auth"
+                href="/"
                 className={`block w-full rounded-full py-4 text-center font-bold transition-all ${
                   tier.isPopular
                     ? "bg-[var(--color-brand-text)] text-[var(--color-brand-primary)] hover:bg-[var(--color-brand-accent)]"

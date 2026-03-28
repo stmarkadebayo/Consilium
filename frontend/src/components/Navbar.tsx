@@ -71,7 +71,7 @@ export default function Navbar() {
         <div className="flex items-center gap-4">
           <ThemeSwitcher />
           <Link
-            href="/auth"
+            href="/"
             className="group relative overflow-hidden inline-block bg-[var(--color-brand-accent)] text-[var(--color-brand-primary)] px-6 py-2 rounded-full font-medium text-sm transition-transform hover:scale-[1.03] duration-300"
             style={{ transitionTimingFunction: "cubic-bezier(0.25, 0.46, 0.45, 0.94)" }}
             data-cursor-text="Open"

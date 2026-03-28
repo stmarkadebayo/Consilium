@@ -100,7 +100,7 @@ export default function Hero() {
           </p>
           <div className="flex items-center gap-6">
             <Link
-              href="/auth"
+              href="/"
               className="group relative overflow-hidden bg-[var(--color-brand-text)] text-[var(--color-brand-primary)] px-8 py-4 rounded-full font-medium text-base transition-transform hover:scale-[1.03] duration-300"
               style={{ transitionTimingFunction: "cubic-bezier(0.25, 0.46, 0.45, 0.94)" }}
               data-cursor-text="Start"
