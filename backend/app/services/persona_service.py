@@ -7,7 +7,6 @@ import httpx
 from sqlalchemy.orm import Session, joinedload
 
 from app.engines.persona_intelligence import PersonaIntelligenceEngine
-from app.graphs.persona_creation import build_persona_draft
 from app.models.council import CouncilMember
 from app.models.job import Job
 from app.models.persona import Persona, PersonaDraft, PersonaSnapshot, PersonaSource
@@ -177,7 +176,11 @@ class PersonaService:
             job_type="persona_creation",
             payload={"input_name": input_name, "persona_type": persona_type, "custom_brief": custom_brief},
         )
-        profile = build_persona_draft(input_name=input_name, persona_type=persona_type, custom_brief=custom_brief)
+        profile = PersonaService.build_persona_draft(
+            input_name=input_name,
+            persona_type=persona_type,
+            custom_brief=custom_brief,
+        )
         draft = PersonaDraft(
             user_id=user.id,
             input_name=input_name,
@@ -367,6 +370,49 @@ class PersonaService:
     @staticmethod
     def serialize_persona(persona: Persona) -> dict:
         return PersonaIntelligenceEngine.serialize_persona(persona)
+
+    @staticmethod
+    def build_persona_draft(
+        *,
+        input_name: str,
+        persona_type: str,
+        custom_brief: Optional[str] = None,
+    ) -> dict:
+        normalized_name = input_name.strip()
+        worldview = (
+            [
+                "seek first-principles clarity",
+                "prefer reversible experiments over irreversible bets",
+                "optimize for long-term compounding",
+            ]
+            if persona_type == "real_person"
+            else [
+                "adapt to the user's stated goals",
+                "surface tradeoffs clearly",
+                "protect against obvious blind spots",
+            ]
+        )
+        communication_style = ["concise", "structured", "direct"]
+        decision_style = ["tradeoff-driven", "evidence-aware", "low-regret"]
+        values = ["clarity", "restraint", "actionable next steps"]
+        blind_spots = ["may underweight emotional context", "may prefer caution over speed"]
+
+        if custom_brief:
+            worldview = [custom_brief.strip()] + worldview[:2]
+            values = ["user-defined perspective", *values[:2]]
+
+        return {
+            "display_name": normalized_name,
+            "identity_summary": custom_brief or f"{normalized_name} is modeled as a perspective-oriented advisor.",
+            "worldview": worldview,
+            "communication_style": communication_style,
+            "decision_style": decision_style,
+            "values": values,
+            "blind_spots": blind_spots,
+            "domain_confidence": {"general_reasoning": 0.72, "strategy": 0.68},
+            "source_count": 3 if persona_type == "real_person" else 0,
+            "source_quality_score": 0.7 if persona_type == "real_person" else 0.35,
+        }
 
     @staticmethod
     def _sync_source_metrics(persona: Persona) -> None:
