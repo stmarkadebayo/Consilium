@@ -1,5 +1,5 @@
-import ProtectedWorkspace from "@/components/auth/ProtectedWorkspace";
+import StudioPage from "@/components/app/StudioPage";
 
 export default function AppPage() {
-  return <ProtectedWorkspace />;
+  return <StudioPage />;
 }
