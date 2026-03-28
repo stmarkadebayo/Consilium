@@ -28,10 +28,8 @@ export const metadata = {
 
 export default function RootLayout({
   children,
-  modal,
 }: {
   children: React.ReactNode;
-  modal: React.ReactNode;
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${playfair.variable} ${jetbrains.variable}`} suppressHydrationWarning>
@@ -55,7 +53,6 @@ export default function RootLayout({
 
         <SupabaseAuthProvider>
           {children}
-          {modal}
         </SupabaseAuthProvider>
       </body>
     </html>
