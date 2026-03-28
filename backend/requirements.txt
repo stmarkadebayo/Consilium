@@ -8,7 +8,6 @@ pgvector==0.4.2
 pydantic==2.12.5
 pydantic-settings==2.11.0
 python-dotenv==1.2.1
-langgraph==0.6.11
 langchain-core==0.3.83
 langchain-google-genai==2.1.12
 httpx==0.28.1
