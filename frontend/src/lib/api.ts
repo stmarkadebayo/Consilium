@@ -229,7 +229,7 @@ const mockConversations: ConversationSummary[] = [];
 const mockCouncil: Council = {
   id: "c1",
   name: "My Council",
-  min_personas: 3,
+  min_personas: 2,
   max_personas: 5,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),

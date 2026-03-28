@@ -39,7 +39,6 @@ def create_persona(client, headers, name: str) -> str:
 def test_council_query_runs_end_to_end(client, headers):
     create_persona(client, headers, "Strategist")
     create_persona(client, headers, "Operator")
-    create_persona(client, headers, "Skeptic")
 
     conversation_response = client.post("/conversations", json={"title": "Fundraising"}, headers=headers)
     assert conversation_response.status_code == 201
@@ -61,7 +60,7 @@ def test_council_query_runs_end_to_end(client, headers):
 
     body = detail_response.json()
     assert len(body["turns"]) == 1
-    assert len(body["turns"][0]["persona_responses"]) == 3
+    assert len(body["turns"][0]["persona_responses"]) == 2
     assert body["turns"][0]["synthesis"]["next_step"]
     assert any(item["evidence_snippets"] for item in body["turns"][0]["persona_responses"])
 
@@ -90,7 +89,6 @@ def test_council_query_handles_partial_failure(client, headers):
 
 def test_council_query_requires_minimum_active_personas(client, headers):
     create_persona(client, headers, "Strategist")
-    create_persona(client, headers, "Operator")
 
     conversation_id = client.post("/conversations", json={"title": "Launch"}, headers=headers).json()["id"]
     response = client.post(
@@ -99,4 +97,4 @@ def test_council_query_requires_minimum_active_personas(client, headers):
         headers=headers,
     )
     assert response.status_code == 409
-    assert "At least 3 active personas" in response.json()["detail"]
+    assert "At least 2 active personas" in response.json()["detail"]
