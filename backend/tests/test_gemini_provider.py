@@ -139,7 +139,7 @@ def test_generate_persona_response_normalizes_unexpected_response_type(monkeypat
     assert result["response_type"] == "inference"
 
 
-def test_generate_synthesis_raises_useful_error(monkeypatch):
+def test_generate_synthesis_falls_back_cleanly_on_provider_error(monkeypatch):
     provider = GeminiProvider(api_key="test-key", model="gemini-2.5-flash")
 
     monkeypatch.setattr(
@@ -147,19 +147,20 @@ def test_generate_synthesis_raises_useful_error(monkeypatch):
         lambda *args, **kwargs: DummyResponse(429, {"error": {"message": "Rate limit exceeded"}}),
     )
 
-    try:
-        provider.generate_synthesis(
-            "Should we hire now?",
-            [
-                {
-                    "persona_name": "Strategist",
-                    "verdict": "Wait",
-                    "reasoning": "Need stronger signal",
-                    "recommended_action": "Interview users",
-                    "confidence": 0.7,
-                }
-            ],
-        )
-        assert False, "Expected RuntimeError"
-    except RuntimeError as error:
-        assert str(error) == "Rate limit exceeded"
+    result = provider.generate_synthesis(
+        "Should we hire now?",
+        [
+            {
+                "persona_name": "Strategist",
+                "verdict": "Wait",
+                "reasoning": "Need stronger signal",
+                "recommended_action": "Interview users",
+                "confidence": 0.7,
+            }
+        ],
+    )
+
+    assert result["agreements"] == []
+    assert result["disagreements"] == []
+    assert result["next_step"] == "Interview users"
+    assert result["combined_recommendation"] == "Wait"
