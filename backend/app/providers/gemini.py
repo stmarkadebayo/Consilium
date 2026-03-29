@@ -142,14 +142,21 @@ class GeminiProvider(BaseProvider):
             },
             "required": ["response_type", "basis_score", "reasoning"],
         }
-        payload = self._generate_json(
-            model=self.model,
-            system_instruction=system_instruction,
-            user_prompt=user_prompt,
-            schema=schema,
-            temperature=0.1,
-            max_output_tokens=120,
-        )
+        try:
+            payload = self._generate_json(
+                model=self.model,
+                system_instruction=system_instruction,
+                user_prompt=user_prompt,
+                schema=schema,
+                temperature=0.1,
+                max_output_tokens=120,
+            )
+        except Exception:
+            return {
+                "response_type": "no_basis",
+                "basis_score": 0.0,
+                "reasoning": "The model did not return a usable response mode classification.",
+            }
         basis_score = max(0.0, min(1.0, float(payload.get("basis_score", 0.0))))
         return {
             "response_type": self._normalize_response_type(payload.get("response_type")),
