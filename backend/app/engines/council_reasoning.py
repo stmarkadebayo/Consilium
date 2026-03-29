@@ -41,7 +41,7 @@ class CouncilReasoningEngine:
             db.add(row)
             response_rows.append(row)
 
-            if result.payload is not None:
+            if result.payload is not None and result.payload.get("response_type") != "no_basis":
                 successful_payloads.append(
                     {
                         **result.payload,
@@ -162,9 +162,9 @@ class CouncilReasoningEngine:
                 message_id=message_id,
                 persona_snapshot_id=result.context.snapshot_id,
                 response_type="no_basis",
-                verdict="Execution failed",
-                reasoning=str(result.error) if result.error else "Unknown execution failure",
-                recommended_action="Retry or refine the prompt with more context.",
+                verdict="No clear answer yet.",
+                reasoning="This persona could not form a grounded response for this turn.",
+                recommended_action=None,
                 confidence=0.0,
                 latency_ms=result.latency_ms,
                 raw_output_json={

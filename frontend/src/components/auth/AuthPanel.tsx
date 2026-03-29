@@ -20,6 +20,7 @@ export default function AuthPanel() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isLocalMode = !configured;
 
   useEffect(() => {
     if (!isLoading && user) {
