@@ -21,6 +21,7 @@ A multi-persona advisory web app that lets you assemble a council of 2–5 advis
 # Backend setup
 cd backend
 cp .env.example .env
+# set GEMINI_API_KEY in backend/.env to use Gemini locally
 pip install -r requirements.txt
 python3 -m alembic upgrade head
 uvicorn app.main:app --reload
@@ -45,18 +46,20 @@ docker compose up --build
 
 ## Worker Process
 
-- The API no longer executes background jobs inline.
-- Run a separate worker process for persona research and council queries:
+- Local development does not need a separate worker. The API process runs the job runner when `JOB_RUNNER_ENABLED=true` (the default).
+- Run a separate worker process only if you want the production-style split:
 
 ```bash
 cd backend
-python -m app.worker
+python3 -m app.worker
 ```
 
 - In production, set `JOB_RUNNER_ENABLED=false` on the API process and run the worker separately.
 
 ## Supabase Setup
 
+- Supabase is optional for local testing.
+- Leave `AUTH_PROVIDER=development` and keep the frontend Supabase env vars blank if you want auth disabled locally.
 - Create a Supabase project for Auth + Postgres
 - Put the Supabase Postgres connection string in `backend/.env` as `DATABASE_URL`
 - Set `AUTH_PROVIDER=supabase`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY` in `backend/.env`
