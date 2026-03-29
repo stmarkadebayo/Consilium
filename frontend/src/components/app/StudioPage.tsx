@@ -1,25 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  LoaderCircle,
-  LogOut,
-  MessageSquareText,
-  Plus,
-  Sparkles,
-  UserRoundPlus,
-} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LoaderCircle, Plus, Sparkles, Send, Bot } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import {
   api,
   pollJobUntilSettled,
   type Conversation,
-  type Council,
   type Persona,
   type PersonaDraft,
-  type User,
 } from "@/lib/api";
-import { isSupabaseConfigured, signOutSupabase } from "@/lib/supabase";
 
 type PersonaBuilderState = {
   personaType: "real_person" | "custom";
@@ -33,71 +25,86 @@ const INITIAL_BUILDER_STATE: PersonaBuilderState = {
   customBrief: "",
 };
 
-const SAMPLE_PROMPTS = [
-  "Should I raise a seed round now, or stay profitable for another six months?",
-  "How should I sequence product, distribution, and pricing over the next 90 days?",
-  "What is the highest-leverage experiment I should run before committing more capital?",
-];
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) {
-    return "";
-  }
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
+const renderMarkdown = (content: string) => (
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    components={{
+      p: ({ children }) => <p className="mb-4 last:mb-0 leading-relaxed text-[var(--color-brand-text)]/80">{children}</p>,
+      ul: ({ children }) => <ul className="mb-4 last:mb-0 list-disc pl-5 space-y-2 text-[var(--color-brand-text)]/80">{children}</ul>,
+      ol: ({ children }) => <ol className="mb-4 last:mb-0 list-decimal pl-5 space-y-2 text-[var(--color-brand-text)]/80">{children}</ol>,
+      li: ({ children }) => <li>{children}</li>,
+      strong: ({ children }) => <strong className="font-semibold text-[var(--color-brand-text)]">{children}</strong>,
+      h1: ({ children }) => <h1 className="mb-4 text-2xl font-semibold mt-6 text-[var(--color-brand-text)]">{children}</h1>,
+      h2: ({ children }) => <h2 className="mb-4 text-xl font-semibold mt-6 text-[var(--color-brand-text)]">{children}</h2>,
+      h3: ({ children }) => <h3 className="mb-3 text-lg font-medium mt-5 text-[var(--color-brand-text)]">{children}</h3>,
+      blockquote: ({ children }) => <blockquote className="border-l-2 border-[var(--color-brand-accent)] pl-4 italic opacity-80 mb-4">{children}</blockquote>,
+      /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+      code({ inline, children, ...props }: any) {
+        return inline ? (
+          <code className="bg-black/20 text-[var(--color-brand-accent)] px-1.5 py-0.5 rounded text-[0.9em] font-mono border border-[var(--color-brand-text)]/10" {...props}>
+            {children}
+          </code>
+        ) : (
+          <pre className="bg-[#000000]/30 p-4 rounded-xl overflow-x-auto text-[0.9em] font-mono mb-4 border border-[var(--color-brand-text)]/10 shadow-inner text-[var(--color-brand-text)]">
+            <code {...props}>{children}</code>
+          </pre>
+        );
+      }
+    }}
+  >
+    {content}
+  </ReactMarkdown>
+);
 
 export default function StudioPage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [council, setCouncil] = useState<Council | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [builder, setBuilder] = useState<PersonaBuilderState>(INITIAL_BUILDER_STATE);
   const [draft, setDraft] = useState<PersonaDraft | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [showBuilder, setShowBuilder] = useState(true);
   const [isBooting, setIsBooting] = useState(true);
   const [isProfiling, setIsProfiling] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [isSigningOut, setIsSigningOut] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const refreshCouncilAndPersonas = useCallback(async () => {
-    const [nextCouncil, nextPersonas] = await Promise.all([api.getCouncil(), api.listPersonas()]);
-    setCouncil(nextCouncil);
-    setPersonas(nextPersonas);
-    return { nextCouncil, nextPersonas };
-  }, []);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const loadLatestConversation = useCallback(async () => {
     const summaries = await api.listConversations();
     const latest = summaries[0];
     if (!latest) {
       setConversation(null);
-      return null;
+      return;
     }
-    const nextConversation = await api.getConversation(latest.id);
-    setConversation(nextConversation);
-    return nextConversation;
+    setConversation(await api.getConversation(latest.id));
   }, []);
 
   const loadApp = useCallback(async () => {
     setIsBooting(true);
     setErrorMessage(null);
     try {
-      const nextUser = await api.getMe();
-      setUser(nextUser);
-      const { nextCouncil } = await refreshCouncilAndPersonas();
-      const activeCount = nextCouncil.members.filter((member) => member.is_active).length;
-      if (activeCount >= nextCouncil.min_personas) {
+      const [, nextCouncil, nextPersonas] = await Promise.all([
+        api.getMe(),
+        api.getCouncil(),
+        api.listPersonas(),
+      ]);
+
+      const activeIds = new Set(
+        nextCouncil.members.filter((member) => member.is_active).map((member) => member.persona_id),
+      );
+      const nextActivePersonas = nextPersonas.filter(
+        (persona) => activeIds.has(persona.id) && persona.status === "active",
+      );
+      setPersonas(nextActivePersonas);
+
+      if (nextActivePersonas.length >= (nextCouncil.min_personas ?? 2)) {
+        setShowBuilder(false);
         await loadLatestConversation();
       } else {
+        setShowBuilder(true);
         setConversation(null);
       }
     } catch (error) {
@@ -105,30 +112,34 @@ export default function StudioPage() {
     } finally {
       setIsBooting(false);
     }
-  }, [loadLatestConversation, refreshCouncilAndPersonas]);
+  }, [loadLatestConversation]);
 
   useEffect(() => {
     void loadApp();
   }, [loadApp]);
 
-  const activePersonaIds = useMemo(
-    () => new Set((council?.members ?? []).filter((member) => member.is_active).map((member) => member.persona_id)),
-    [council],
-  );
-  const activePersonas = useMemo(
-    () => personas.filter((persona) => activePersonaIds.has(persona.id) && persona.status === "active"),
-    [activePersonaIds, personas],
-  );
-  const activePersonaCount = activePersonas.length;
-  const minimumPersonas = council?.min_personas ?? 2;
-  const maximumPersonas = council?.max_personas ?? 5;
-  const readyToChat = activePersonaCount >= minimumPersonas;
-  const canCreateMore = activePersonaCount < maximumPersonas;
-  const personasStillNeeded = Math.max(minimumPersonas - activePersonaCount, 0);
+  const activePersonaCount = personas.length;
+  const readyToChat = activePersonaCount >= 2;
+  const canCreateMore = activePersonaCount < 5;
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conversation?.turns]);
+    if (!readyToChat && !isBooting) {
+      setShowBuilder(true);
+    }
+  }, [readyToChat, isBooting]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [conversation?.turns, isSending]);
+
+  const handleTextareaInput = () => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  };
 
   const handleBuilderChange = (field: keyof PersonaBuilderState, value: string) => {
     setBuilder((current) => ({ ...current, [field]: value }));
@@ -136,13 +147,10 @@ export default function StudioPage() {
 
   const handleProfilePersona = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!builder.inputName.trim() || isProfiling || !canCreateMore) {
-      return;
-    }
+    if (!builder.inputName.trim() || isProfiling || !canCreateMore) return;
 
     setIsProfiling(true);
     setErrorMessage(null);
-    setStatusMessage("Profiling persona...");
     setDraft(null);
 
     try {
@@ -162,582 +170,399 @@ export default function StudioPage() {
       }
 
       setDraft(resolvedDraft);
-      setStatusMessage("Persona profile ready. Review and approve it.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to build the persona profile.");
-      setStatusMessage(null);
     } finally {
       setIsProfiling(false);
     }
   };
 
   const handleApproveDraft = async () => {
-    if (!draft || isApproving) {
-      return;
-    }
+    if (!draft || isApproving) return;
 
     setIsApproving(true);
     setErrorMessage(null);
-    setStatusMessage("Adding persona to the council...");
 
     try {
       await api.approvePersonaDraft(draft.id);
-      const { nextCouncil } = await refreshCouncilAndPersonas();
       setDraft(null);
       setBuilder(INITIAL_BUILDER_STATE);
-
-      const nextActiveCount = nextCouncil.members.filter((member) => member.is_active).length;
-      if (nextActiveCount >= nextCouncil.min_personas) {
-        await loadLatestConversation();
-        setStatusMessage("Council ready. Ask the first question.");
-      } else {
-        setStatusMessage("Persona added. Create the next one.");
-      }
+      await loadApp();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to approve persona.");
-      setStatusMessage(null);
     } finally {
       setIsApproving(false);
     }
   };
 
-  const handleStartFreshConversation = () => {
-    setConversation(null);
+  const submitPrompt = async () => {
+    if (!readyToChat || !prompt.trim() || isSending) return;
+
+    const content = prompt.trim();
     setPrompt("");
-    setStatusMessage("Fresh conversation ready.");
-    setErrorMessage(null);
-  };
-
-  const handleSendMessage = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!readyToChat || !prompt.trim() || isSending) {
-      return;
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'; 
     }
-
+    
     setIsSending(true);
     setErrorMessage(null);
-    setStatusMessage("All personas are thinking...");
 
     try {
       let conversationId = conversation?.id;
       if (!conversationId) {
         const createdConversation = await api.createConversation(
-          prompt.length > 54 ? `${prompt.slice(0, 54)}...` : prompt,
+          content.length > 54 ? `${content.slice(0, 54)}...` : content,
         );
         conversationId = createdConversation.id;
       }
 
-      const submission = await api.submitMessage(conversationId, prompt.trim());
+      const submission = await api.submitMessage(conversationId, content);
       await pollJobUntilSettled(submission.job_id, 45000);
-      const nextConversation = await api.getConversation(conversationId);
-      setConversation(nextConversation);
-      setPrompt("");
-      setStatusMessage("Council response complete.");
+      setConversation(await api.getConversation(conversationId));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to run the council query.");
-      setStatusMessage(null);
+      setPrompt(content);
     } finally {
       setIsSending(false);
     }
   };
 
-  const handleSignOut = async () => {
-    if (!isSupabaseConfigured()) {
-      return;
-    }
-    setIsSigningOut(true);
-    try {
-      await signOutSupabase();
-      window.location.href = "/";
-    } finally {
-      setIsSigningOut(false);
+  const handleSendMessage = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await submitPrompt();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void submitPrompt();
     }
   };
 
+  const turns = conversation?.turns ?? [];
+
   if (isBooting) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[var(--color-brand-primary)]">
-        <div className="flex items-center gap-3 text-sm uppercase tracking-[0.24em] text-[var(--color-brand-text)]/65">
-          <LoaderCircle className="h-4 w-4 animate-spin text-[var(--color-brand-accent)]" />
-          Loading council...
-        </div>
-      </main>
+      <div className="flex h-full w-full items-center justify-center bg-[var(--color-brand-primary)]">
+        <LoaderCircle className="h-6 w-6 animate-spin text-[var(--color-brand-accent)]" />
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[var(--color-brand-primary)] text-[var(--color-brand-text)]">
-      <div className="grid min-h-screen lg:grid-cols-[380px_minmax(0,1fr)]">
-        <aside className="border-r border-[var(--color-brand-text)]/8 bg-[color-mix(in_srgb,var(--color-brand-surface)_72%,var(--color-brand-primary))] px-6 py-6">
-          <div className="flex h-full flex-col gap-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-mono uppercase tracking-[0.24em] text-[var(--color-brand-accent)]">
-                  Consilium
-                </p>
-                <h1 className="mt-3 font-serif text-3xl font-semibold tracking-tight">
-                  {readyToChat ? "Council chat" : "Create personas"}
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-[var(--color-brand-text)]/62">
-                  {readyToChat
-                    ? "Your personas are ready. New prompts go to all active advisors at once."
-                    : `Build ${minimumPersonas} personas minimum before the chat unlocks.`}
-                </p>
-              </div>
-              {isSupabaseConfigured() && (
-                <button
-                  type="button"
-                  onClick={() => void handleSignOut()}
-                  disabled={isSigningOut}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/40 text-[var(--color-brand-text)]/70 transition hover:border-red-400/25 hover:text-red-300 disabled:opacity-60"
+    <div className="flex h-full w-full flex-col relative bg-[var(--color-brand-primary)]">
+      {/* HEADER */}
+      <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-brand-text)]/5 bg-[var(--color-brand-primary)]/80 px-6 py-4 backdrop-blur-md z-10 hidden md:flex">
+        <div className="flex items-center gap-3">
+          <h1 className="font-serif text-xl font-semibold text-[var(--color-brand-text)]">
+            {conversation?.title || "New Session"}
+          </h1>
+          {readyToChat && !showBuilder && (
+            <span className="rounded-full bg-[var(--color-brand-text)]/10 px-2.5 py-0.5 text-xs text-[var(--color-brand-text)]/60">
+              {activePersonaCount} Personas Active
+            </span>
+          )}
+        </div>
+        
+        {readyToChat && canCreateMore && !showBuilder && (
+          <button
+            onClick={() => setShowBuilder(true)}
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-surface)]/30 px-3 py-1.5 text-xs text-[var(--color-brand-text)]/70 transition hover:border-[var(--color-brand-accent)]/30 hover:text-[var(--color-brand-text)]"
+          >
+            <Plus className="h-3 w-3" /> Add Persona
+          </button>
+        )}
+      </header>
+
+      {errorMessage && (
+        <div className="absolute top-4 md:top-20 left-1/2 z-50 w-11/12 md:max-w-md -translate-x-1/2 rounded-2xl border border-red-500/20 bg-red-950/80 px-4 py-3 text-sm text-red-200 shadow-xl backdrop-blur-md">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* CONTENT AREA */}
+      <div className="flex-[1_1_0] overflow-y-auto overflow-x-hidden p-4 md:p-8 relative scroll-smooth will-change-scroll pb-32">
+        <div className="mx-auto max-w-3xl lg:max-w-4xl pb-4">
+          {showBuilder ? (
+            <div className="mx-auto max-w-xl animate-in fade-in slide-in-from-bottom-4 duration-500 pt-8">
+              {readyToChat && (
+                <button 
+                  onClick={() => setShowBuilder(false)}
+                  className="mb-6 inline-flex items-center gap-2 text-sm text-[var(--color-brand-text)]/50 transition hover:text-[var(--color-brand-text)]"
                 >
-                  <LogOut className="h-4 w-4" />
+                   Cancel
                 </button>
               )}
-            </div>
-
-            <div className="rounded-[2rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/35 p-5">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-mono uppercase tracking-[0.2em] text-[var(--color-brand-text)]/42">
-                    Active personas
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold">
-                    {activePersonaCount}
-                    <span className="ml-2 text-sm font-medium text-[var(--color-brand-text)]/38">
-                      / {maximumPersonas}
-                    </span>
+              
+              <div className="mb-8 p-6 md:p-8 rounded-[2rem] border border-[var(--color-brand-text)]/5 bg-[var(--color-brand-surface)]/20 shadow-2xl">
+                <div className="mb-6">
+                  <h2 className="font-serif text-3xl font-semibold text-[var(--color-brand-text)]">
+                    {readyToChat ? "Expand Council" : "Build Your Council"}
+                  </h2>
+                  <p className="mt-2 text-sm leading-relaxed text-[var(--color-brand-text)]/60">
+                    {readyToChat
+                      ? "Add specialized perspectives to deepen your group's analyses."
+                      : "Add at least two distinct perspectives to generate a synthesized verdict. Profile individuals or define archetypes."}
                   </p>
                 </div>
-                <div className="rounded-full border border-[var(--color-brand-accent)]/20 bg-[var(--color-brand-accent)]/10 px-4 py-2 text-xs font-mono uppercase tracking-[0.2em] text-[var(--color-brand-accent)]">
-                  {readyToChat ? "Chat live" : `${personasStillNeeded} to go`}
-                </div>
-              </div>
-            </div>
 
-            <div className="space-y-3">
-              {activePersonas.length === 0 ? (
-                <div className="rounded-[1.75rem] border border-dashed border-[var(--color-brand-text)]/14 px-5 py-8 text-center">
-                  <UserRoundPlus className="mx-auto h-8 w-8 text-[var(--color-brand-text)]/28" />
-                  <p className="mt-4 text-sm leading-6 text-[var(--color-brand-text)]/58">
-                    No personas yet. Create the first one now.
-                  </p>
-                </div>
-              ) : (
-                activePersonas.map((persona) => (
-                  <div
-                    key={persona.id}
-                    className="rounded-[1.5rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/28 px-4 py-4"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-semibold">{persona.display_name}</p>
-                        <p className="mt-1 text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/40">
-                          {persona.persona_type === "real_person" ? "Profiled persona" : "Custom advisor"}
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-[var(--color-brand-text)]/10 px-3 py-1 text-xs text-[var(--color-brand-accent)]">
-                        {persona.source_count} sources
-                      </span>
-                    </div>
-                    {persona.identity_summary && (
-                      <p className="mt-3 text-sm leading-6 text-[var(--color-brand-text)]/62">
-                        {persona.identity_summary}
-                      </p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="rounded-[2rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/38 p-5">
-              <div className="mb-4 flex items-center gap-3">
-                <Plus className="h-4 w-4 text-[var(--color-brand-accent)]" />
-                <h2 className="text-base font-semibold">Add persona</h2>
-              </div>
-
-              {!canCreateMore ? (
-                <p className="text-sm leading-6 text-[var(--color-brand-text)]/58">
-                  You have reached the current council cap of {maximumPersonas} personas.
-                </p>
-              ) : (
-                <form className="space-y-4" onSubmit={handleProfilePersona}>
-                  <div className="flex rounded-full border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/45 p-1">
-                    <button
-                      type="button"
-                      onClick={() => handleBuilderChange("personaType", "real_person")}
-                      className={`flex-1 rounded-full px-3 py-2 text-xs font-mono uppercase tracking-[0.16em] transition ${
-                        builder.personaType === "real_person"
-                          ? "bg-[var(--color-brand-accent)] text-[var(--color-brand-primary)]"
-                          : "text-[var(--color-brand-text)]/55"
-                      }`}
-                    >
-                      Real person
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleBuilderChange("personaType", "custom")}
-                      className={`flex-1 rounded-full px-3 py-2 text-xs font-mono uppercase tracking-[0.16em] transition ${
-                        builder.personaType === "custom"
-                          ? "bg-[var(--color-brand-accent)] text-[var(--color-brand-primary)]"
-                          : "text-[var(--color-brand-text)]/55"
-                      }`}
-                    >
-                      Custom
-                    </button>
+                <form className="space-y-5" onSubmit={handleProfilePersona}>
+                  <div className="flex p-1 rounded-2xl border border-[var(--color-brand-text)]/10 bg-[#000000]/20">
+                    {(["real_person", "custom"] as const).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => handleBuilderChange("personaType", type)}
+                        className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                          builder.personaType === type
+                            ? "bg-[var(--color-brand-surface)] text-[var(--color-brand-text)] shadow-sm border border-[var(--color-brand-text)]/10"
+                            : "text-[var(--color-brand-text)]/50 hover:text-[var(--color-brand-text)]/80"
+                        }`}
+                      >
+                        {type === "real_person" ? "Real Person" : "Custom"}
+                      </button>
+                    ))}
                   </div>
 
-                  <label className="grid gap-2">
-                    <span className="text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/42">
-                      {builder.personaType === "real_person" ? "Person name" : "Persona name"}
-                    </span>
-                    <input
-                      value={builder.inputName}
-                      onChange={(event) => handleBuilderChange("inputName", event.target.value)}
-                      className="rounded-[1.25rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/45 px-4 py-3 text-sm outline-none transition focus:border-[var(--color-brand-accent)]"
-                      placeholder={builder.personaType === "real_person" ? "Naval Ravikant" : "The Skeptic"}
-                    />
-                  </label>
+                  <input
+                    value={builder.inputName}
+                    onChange={(event) => handleBuilderChange("inputName", event.target.value)}
+                    className="w-full rounded-2xl border border-[var(--color-brand-text)]/10 bg-[#000000]/20 px-5 py-3.5 text-sm outline-none text-[var(--color-brand-text)] transition focus:border-[var(--color-brand-accent)] focus:ring-1 focus:ring-[var(--color-brand-accent)]"
+                    placeholder={builder.personaType === "real_person" ? "e.g., Steve Jobs, Naval Ravikant..." : "e.g., Cynical Risk Analyst..."}
+                  />
 
-                  <label className="grid gap-2">
-                    <span className="text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/42">
-                      Brief
-                    </span>
-                    <textarea
-                      rows={4}
-                      value={builder.customBrief}
-                      onChange={(event) => handleBuilderChange("customBrief", event.target.value)}
-                      className="resize-none rounded-[1.25rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/45 px-4 py-3 text-sm leading-6 outline-none transition focus:border-[var(--color-brand-accent)]"
-                      placeholder={
-                        builder.personaType === "real_person"
-                          ? "Optional note to bias the profile toward a specific domain or angle."
-                          : "Describe the worldview, communication style, and what this advisor should optimize for."
-                      }
-                    />
-                  </label>
+                  <textarea
+                    rows={3}
+                    value={builder.customBrief}
+                    onChange={(event) => handleBuilderChange("customBrief", event.target.value)}
+                    className="w-full resize-none rounded-2xl border border-[var(--color-brand-text)]/10 bg-[#000000]/20 px-5 py-3.5 text-sm outline-none text-[var(--color-brand-text)] transition focus:border-[var(--color-brand-accent)] focus:ring-1 focus:ring-[var(--color-brand-accent)]"
+                    placeholder={
+                      builder.personaType === "real_person"
+                        ? "Optional context to steer the profile focus."
+                        : "Describe the archetype's values, approach, and background."
+                    }
+                  />
 
                   <button
                     type="submit"
-                    disabled={isProfiling}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-brand-accent)] px-5 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+                    disabled={isProfiling || !canCreateMore}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--color-brand-text)] px-5 py-3.5 text-sm font-semibold text-[#000000] transition hover:bg-[var(--color-brand-accent)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isProfiling ? (
-                      <>
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                        Profiling...
-                      </>
+                      <><LoaderCircle className="h-4 w-4 animate-spin" /> Compiling Profiler...</>
                     ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" />
-                        Build persona
-                      </>
+                      <><Sparkles className="h-4 w-4" /> Generate Profile</>
                     )}
                   </button>
                 </form>
-              )}
-            </div>
 
-            {draft && (
-              <div className="rounded-[2rem] border border-[var(--color-brand-accent)]/20 bg-[var(--color-brand-accent)]/8 p-5">
-                <p className="text-xs font-mono uppercase tracking-[0.2em] text-[var(--color-brand-accent)]">
-                  Draft ready
-                </p>
-                <h3 className="mt-3 text-lg font-semibold">
-                  {draft.draft_profile.display_name || draft.input_name}
-                </h3>
-                {draft.draft_profile.identity_summary && (
-                  <p className="mt-3 text-sm leading-6 text-[var(--color-brand-text)]/72">
-                    {draft.draft_profile.identity_summary}
-                  </p>
-                )}
-
-                {!!draft.draft_profile.worldview?.length && (
-                  <div className="mt-4">
-                    <p className="text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/42">
-                      Worldview
-                    </p>
-                    <ul className="mt-2 space-y-2 text-sm leading-6 text-[var(--color-brand-text)]/72">
-                      {draft.draft_profile.worldview.slice(0, 3).map((item) => (
-                        <li key={item}>• {item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {!!draft.draft_profile.warnings?.length && (
-                  <div className="mt-4 rounded-[1.25rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/30 px-4 py-3 text-sm leading-6 text-[var(--color-brand-text)]/68">
-                    {draft.draft_profile.warnings.join(" ")}
-                  </div>
-                )}
-
-                <div className="mt-4 flex items-center justify-between gap-4 text-xs font-mono uppercase tracking-[0.16em] text-[var(--color-brand-text)]/42">
-                  <span>{draft.sources.length} sources</span>
-                  <span>{draft.review_status}</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void handleApproveDraft()}
-                  disabled={isApproving}
-                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full border border-[var(--color-brand-accent)]/30 bg-[var(--color-brand-accent)] px-5 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isApproving ? (
-                    <>
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    "Approve persona"
-                  )}
-                </button>
-              </div>
-            )}
-
-            {user && (
-              <p className="mt-auto text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/32">
-                {user.email}
-              </p>
-            )}
-          </div>
-        </aside>
-
-        <section className="flex min-h-screen flex-col">
-          <header className="border-b border-[var(--color-brand-text)]/8 px-6 py-5 md:px-8">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-mono uppercase tracking-[0.22em] text-[var(--color-brand-text)]/38">
-                  {readyToChat ? "Live council" : "Persona setup"}
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-                  {readyToChat ? conversation?.title || "New council session" : "Build the council first"}
-                </h2>
-              </div>
-              {readyToChat && (
-                <button
-                  type="button"
-                  onClick={handleStartFreshConversation}
-                  className="inline-flex items-center gap-2 rounded-full border border-[var(--color-brand-text)]/10 px-4 py-2.5 text-sm font-semibold text-[var(--color-brand-text)]/72 transition hover:border-[var(--color-brand-accent)]/25 hover:text-[var(--color-brand-text)]"
-                >
-                  <MessageSquareText className="h-4 w-4" />
-                  New chat
-                </button>
-              )}
-            </div>
-          </header>
-
-          <div className="flex-1 px-6 py-6 md:px-8">
-            {(statusMessage || errorMessage) && (
-              <div
-                className={`mb-6 rounded-[1.5rem] border px-4 py-3 text-sm leading-6 ${
-                  errorMessage
-                    ? "border-red-500/25 bg-red-500/10 text-red-200"
-                    : "border-[var(--color-brand-accent)]/20 bg-[var(--color-brand-accent)]/10 text-[var(--color-brand-text)]"
-                }`}
-              >
-                {errorMessage ?? statusMessage}
-              </div>
-            )}
-
-            {!readyToChat ? (
-              <div className="flex h-full items-center justify-center">
-                <div className="w-full max-w-3xl rounded-[2.5rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-surface)]/45 p-8 md:p-10">
-                  <p className="text-xs font-mono uppercase tracking-[0.24em] text-[var(--color-brand-accent)]">
-                    Step 1
-                  </p>
-                  <h3 className="mt-4 font-serif text-4xl font-semibold tracking-tight">
-                    Create {minimumPersonas} personas to unlock the chat.
-                  </h3>
-                  <p className="mt-4 max-w-2xl text-base leading-8 text-[var(--color-brand-text)]/64">
-                    Each persona is created one by one. The profiling agent searches, collates the relevant material,
-                    and builds the profile that powers the council response. Once you have at least {minimumPersonas},
-                    the chat opens automatically.
-                  </p>
-
-                  <div className="mt-8 grid gap-4 md:grid-cols-3">
-                    <div className="rounded-[1.75rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/30 p-5">
-                      <p className="text-xs font-mono uppercase tracking-[0.2em] text-[var(--color-brand-accent)]">
-                        Profile
+                {draft && (
+                  <div className="mt-8 animate-in fade-in zoom-in-95 duration-300 rounded-2xl border border-[var(--color-brand-accent)]/20 bg-[var(--color-brand-accent)]/5 p-6 shadow-xl">
+                    <h3 className="font-serif text-2xl font-semibold text-[var(--color-brand-text)]">
+                      {draft.draft_profile.display_name || draft.input_name}
+                    </h3>
+                    {draft.draft_profile.identity_summary && (
+                      <p className="mt-4 text-sm leading-relaxed text-[var(--color-brand-text)]/80">
+                        {draft.draft_profile.identity_summary}
                       </p>
-                      <p className="mt-3 text-sm leading-6 text-[var(--color-brand-text)]/66">
-                        Add a real person or custom advisor and let the system draft the persona profile.
-                      </p>
-                    </div>
-                    <div className="rounded-[1.75rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/30 p-5">
-                      <p className="text-xs font-mono uppercase tracking-[0.2em] text-[var(--color-brand-accent)]">
-                        Approve
-                      </p>
-                      <p className="mt-3 text-sm leading-6 text-[var(--color-brand-text)]/66">
-                        Review the generated persona and add it to the active council roster.
-                      </p>
-                    </div>
-                    <div className="rounded-[1.75rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/30 p-5">
-                      <p className="text-xs font-mono uppercase tracking-[0.2em] text-[var(--color-brand-accent)]">
-                        Ask
-                      </p>
-                      <p className="mt-3 text-sm leading-6 text-[var(--color-brand-text)]/66">
-                        Once the minimum is met, every prompt fans out to all personas simultaneously.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex h-full flex-col">
-                <div className="flex-1 space-y-6 overflow-y-auto pr-1">
-                  {(conversation?.turns.length ?? 0) === 0 ? (
-                    <div className="flex h-full items-center justify-center">
-                      <div className="w-full max-w-3xl rounded-[2.5rem] border border-dashed border-[var(--color-brand-text)]/14 bg-[var(--color-brand-surface)]/40 p-8 text-center md:p-10">
-                        <Sparkles className="mx-auto h-10 w-10 text-[var(--color-brand-accent)]/75" />
-                        <h3 className="mt-5 text-2xl font-semibold">Ask the council.</h3>
-                        <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-[var(--color-brand-text)]/62">
-                          The moment you send a prompt, every active persona starts responding in parallel and the
-                          synthesis is generated after the full set arrives.
-                        </p>
-                        <div className="mt-8 grid gap-3 md:grid-cols-3">
-                          {SAMPLE_PROMPTS.map((sample) => (
-                            <button
-                              key={sample}
-                              type="button"
-                              onClick={() => setPrompt(sample)}
-                              className="rounded-[1.5rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/30 px-4 py-4 text-left text-sm leading-6 text-[var(--color-brand-text)]/72 transition hover:border-[var(--color-brand-accent)]/25 hover:text-[var(--color-brand-text)]"
-                            >
-                              {sample}
-                            </button>
+                    )}
+
+                    {!!draft.draft_profile.worldview?.length && (
+                      <div className="mt-5">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-brand-text)]/50">Core Tenets</span>
+                        <ul className="mt-3 space-y-2 text-sm text-[var(--color-brand-text)]/70">
+                          {draft.draft_profile.worldview.slice(0, 3).map((item, i) => (
+                            <li key={i} className="flex gap-2">
+                               <span className="text-[var(--color-brand-accent)]">•</span> {item}
+                            </li>
                           ))}
-                        </div>
+                        </ul>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => void handleApproveDraft()}
+                      disabled={isApproving}
+                      className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-brand-accent)] px-5 py-3 text-sm font-semibold text-[#000000] transition hover:brightness-110 disabled:opacity-50"
+                    >
+                      {isApproving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : "Approve & Seat Persona"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-12">
+              {turns.length === 0 && (
+                <div className="flex flex-col items-center justify-center pt-24 text-center animate-in fade-in duration-700">
+                  <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--color-brand-surface)]/30 ring-1 ring-[var(--color-brand-text)]/10 shadow-lg">
+                    <Bot className="h-8 w-8 text-[var(--color-brand-text)]/60" />
+                  </div>
+                  <h3 className="font-serif text-3xl font-medium text-[var(--color-brand-text)]">The council is seated.</h3>
+                  <p className="mt-4 max-w-md text-sm leading-relaxed text-[var(--color-brand-text)]/60">
+                    Present your dilemma, decision, or query. The active personas will analyze it from their distinct worldviews and synthesize a coherent verdict.
+                  </p>
+                </div>
+              )}
+
+              {turns.map((turn) => {
+                const visibleResponses = turn.persona_responses;
+
+                return (
+                  <article key={turn.user_message.id} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* User Message Bubble */}
+                    <div className="flex justify-end pt-4">
+                      <div className="max-w-[90%] md:max-w-[75%] rounded-[1.8rem] rounded-br-[0.4rem] bg-[#000000]/30 md:bg-[var(--color-brand-surface)]/80 px-6 py-4 border border-[var(--color-brand-text)]/10 shadow-sm backdrop-blur-sm">
+                        <p className="whitespace-pre-wrap text-[0.95rem] leading-relaxed text-[var(--color-brand-text)]">
+                          {turn.user_message.content}
+                        </p>
                       </div>
                     </div>
-                  ) : (
-                    conversation?.turns.map((turn) => (
-                      <article key={turn.user_message.id} className="space-y-4">
-                        <div className="rounded-[1.6rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-text)] text-[var(--color-brand-primary)] px-5 py-4">
-                          <p className="text-xs font-mono uppercase tracking-[0.2em] opacity-60">
-                            You · {formatDate(turn.user_message.created_at)}
-                          </p>
-                          <p className="mt-3 text-sm leading-7 md:text-base">{turn.user_message.content}</p>
-                        </div>
 
-                        <div className="grid gap-4 xl:grid-cols-2">
-                          {turn.persona_responses.map((response) => (
-                            <div
-                              key={response.id}
-                              className="rounded-[1.5rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-surface)]/55 px-5 py-4"
-                            >
-                              <div className="flex items-start justify-between gap-4">
-                                <div>
-                                  <p className="font-semibold">{response.persona_name}</p>
-                                  <p className="mt-1 text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/40">
-                                    {response.response_type.replace("_", " ")}
-                                  </p>
+                    {/* Council Responses */}
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-5">
+                      {visibleResponses.length > 0 && (
+                        <div className="hidden shrink-0 md:block mt-1">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-brand-accent)]/10 border border-[var(--color-brand-accent)]/20 shadow-inner">
+                            <Bot className="h-5 w-5 text-[var(--color-brand-accent)]" />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex-1 space-y-6">
+                        {visibleResponses.length > 0 && (
+                          <div className="grid gap-4 xl:grid-cols-2">
+                            {visibleResponses.map((response) => (
+                              <div
+                                key={response.id}
+                                className={`group rounded-3xl border border-[var(--color-brand-text)]/5 ${response.status === 'failed' ? 'bg-red-950/20' : 'bg-[var(--color-brand-surface)]/30'} backdrop-blur-md p-6 shadow-sm transition-all hover:border-[var(--color-brand-text)]/10 hover:bg-[var(--color-brand-surface)]/50`}
+                              >
+                                <div className="mb-5 flex items-center justify-between border-b border-[var(--color-brand-text)]/5 pb-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-brand-primary)] text-xs font-semibold text-[var(--color-brand-text)]/90 ring-1 ring-[var(--color-brand-text)]/10">
+                                      {response.persona_name.charAt(0)}
+                                    </div>
+                                    <p className="font-serif font-medium tracking-wide text-[var(--color-brand-text)] text-lg opacity-90">{response.persona_name}</p>
+                                  </div>
+                                  {(response.status === 'failed' || response.response_type === 'no_basis') && (
+                                     <span className="text-xs uppercase tracking-widest text-[var(--color-brand-accent)]/60 bg-[var(--color-brand-accent)]/5 px-2 py-1 rounded-md">
+                                       {response.status === 'failed' ? 'Failed' : 'No Basis'}
+                                     </span>
+                                  )}
                                 </div>
-                                <span className="rounded-full border border-[var(--color-brand-text)]/10 px-3 py-1 text-xs uppercase tracking-[0.16em] text-[var(--color-brand-accent)]">
-                                  {response.status}
-                                </span>
+                                
+                                <div className="space-y-4 text-[0.9rem] leading-relaxed">
+                                  {response.verdict && (
+                                    <div className="text-[var(--color-brand-text)]/90">
+                                      {renderMarkdown(response.verdict)}
+                                    </div>
+                                  )}
+                                  {response.reasoning && (
+                                    <div className="text-[var(--color-brand-text)]/70">
+                                      {renderMarkdown(response.reasoning)}
+                                    </div>
+                                  )}
+                                  {response.recommended_action && (
+                                    <div className="mt-5 rounded-2xl bg-[#000000]/20 border border-white/5 p-4">
+                                      <span className="text-xs font-semibold uppercase tracking-widest text-[var(--color-brand-accent)] mb-3 block">Actionable</span>
+                                      <div className="text-[var(--color-brand-text)]/90">
+                                        {renderMarkdown(response.recommended_action)}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
+                            ))}
+                          </div>
+                        )}
 
-                              <p className="mt-4 text-sm font-medium leading-6">
-                                {response.verdict || "No verdict returned."}
-                              </p>
-                              <p className="mt-3 text-sm leading-6 text-[var(--color-brand-text)]/66">
-                                {response.reasoning || "No reasoning returned."}
-                              </p>
-
-                              {response.recommended_action && (
-                                <div className="mt-4 rounded-[1.25rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/30 px-4 py-3 text-sm leading-6 text-[var(--color-brand-text)]/78">
-                                  <span className="block text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/42">
-                                    Recommended action
-                                  </span>
-                                  <span className="mt-2 block">{response.recommended_action}</span>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-
+                        {/* Synthesis Block */}
                         {turn.synthesis && (
-                          <div className="rounded-[1.8rem] border border-[var(--color-brand-accent)]/20 bg-[var(--color-brand-accent)]/8 px-5 py-5">
-                            <p className="text-xs font-mono uppercase tracking-[0.2em] text-[var(--color-brand-accent)]">
-                              Synthesis
-                            </p>
-                            <p className="mt-3 text-base leading-7">
-                              {turn.synthesis.combined_recommendation || "No combined recommendation returned."}
-                            </p>
-
-                            <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                              <div className="rounded-[1.5rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/30 px-4 py-4">
-                                <p className="text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/42">
-                                  Agreements
-                                </p>
-                                <ul className="mt-3 space-y-2 text-sm leading-6 text-[var(--color-brand-text)]/74">
-                                  {turn.synthesis.agreements.map((agreement) => (
-                                    <li key={agreement}>• {agreement}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                              <div className="rounded-[1.5rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/30 px-4 py-4">
-                                <p className="text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/42">
-                                  Disagreements
-                                </p>
-                                <ul className="mt-3 space-y-2 text-sm leading-6 text-[var(--color-brand-text)]/74">
-                                  {turn.synthesis.disagreements.map((disagreement) => (
-                                    <li key={disagreement}>• {disagreement}</li>
-                                  ))}
-                                </ul>
-                              </div>
+                          <div className="mt-6 rounded-3xl border border-[var(--color-brand-accent)]/30 bg-[var(--color-brand-accent)]/5 px-6 md:px-8 py-6 shadow-xl relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-4 opacity-10">
+                              <Sparkles className="h-24 w-24 text-[var(--color-brand-accent)]" />
                             </div>
-
-                            {turn.synthesis.next_step && (
-                              <div className="mt-4 rounded-[1.5rem] border border-[var(--color-brand-accent)]/20 bg-[var(--color-brand-primary)]/30 px-4 py-4 text-sm leading-6 text-[var(--color-brand-text)]/84">
-                                <span className="block text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-accent)]">
-                                  Next step
-                                </span>
-                                <span className="mt-2 block">{turn.synthesis.next_step}</span>
+                            <h4 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[var(--color-brand-accent)]">
+                              <Sparkles className="h-4 w-4" /> Final Synthesis
+                            </h4>
+                            <div className="text-[0.95rem] leading-relaxed text-[var(--color-brand-text)]/90 z-10 relative">
+                              {renderMarkdown(turn.synthesis.combined_recommendation || "The council returned a synthesis.")}
+                            </div>
+                            
+                            {turn.synthesis.next_step && turn.synthesis.next_step !== turn.synthesis.combined_recommendation && (
+                              <div className="mt-5 pt-5 border-t border-[var(--color-brand-accent)]/20 z-10 relative">
+                                <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-[var(--color-brand-text)]/50">Next Step</span>
+                                <div className="text-[0.95rem] leading-relaxed text-[var(--color-brand-text)]/80">
+                                   {renderMarkdown(turn.synthesis.next_step)}
+                                </div>
                               </div>
                             )}
                           </div>
                         )}
-                      </article>
-                    ))
-                  )}
-
-                  <div ref={scrollRef} />
-                </div>
-
-                <form onSubmit={handleSendMessage} className="mt-6 shrink-0">
-                  <div className="rounded-[2rem] border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-surface)]/48 p-4">
-                    <textarea
-                      rows={4}
-                      value={prompt}
-                      onChange={(event) => setPrompt(event.target.value)}
-                      className="w-full resize-none bg-transparent px-2 py-2 text-sm leading-7 outline-none"
-                      placeholder="Ask the full council a single question..."
-                    />
-                    <div className="mt-3 flex items-center justify-between gap-4">
-                      <p className="text-xs font-mono uppercase tracking-[0.18em] text-[var(--color-brand-text)]/34">
-                        {activePersonaCount} personas will respond simultaneously
-                      </p>
-                      <button
-                        type="submit"
-                        disabled={isSending || !prompt.trim()}
-                        className="inline-flex items-center gap-2 rounded-full bg-[var(--color-brand-accent)] px-5 py-3 text-sm font-semibold text-[var(--color-brand-primary)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {isSending ? (
-                          <>
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                            Thinking...
-                          </>
-                        ) : (
-                          "Send to council"
-                        )}
-                      </button>
+                      </div>
                     </div>
+                  </article>
+                );
+              })}
+
+              {isSending && (
+                <div className="flex animate-pulse items-center gap-3 pt-4 pl-2 md:pl-16">
+                  <div className="flex space-x-1 duration-1000">
+                    <div className="h-2.5 w-2.5 rounded-full bg-[var(--color-brand-accent)]" style={{ animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '-0.32s' }} />
+                    <div className="h-2.5 w-2.5 rounded-full bg-[var(--color-brand-accent)]" style={{ animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '-0.16s' }} />
+                    <div className="h-2.5 w-2.5 rounded-full bg-[var(--color-brand-accent)]" style={{ animation: 'bounce 1.4s infinite ease-in-out both' }} />
                   </div>
-                </form>
-              </div>
-            )}
-          </div>
-        </section>
+                  <span className="text-sm font-mono tracking-widest uppercase text-[var(--color-brand-accent)]/60">Deliberating</span>
+                </div>
+              )}
+              
+              <div ref={scrollRef} className="h-10 w-full" />
+            </div>
+          )}
+        </div>
       </div>
-    </main>
+
+      {/* INPUT AREA */}
+      {!showBuilder && readyToChat && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--color-brand-primary)] via-[var(--color-brand-primary)]/95 to-transparent pt-12 pb-6 md:pb-8 px-4 md:px-8 pointer-events-none z-20">
+          <div className="mx-auto max-w-3xl lg:max-w-4xl pointer-events-auto">
+            <form onSubmit={handleSendMessage} className="relative shadow-2xl rounded-[2rem] group border border-[var(--color-brand-text)]/10 bg-[#000000]/60 backdrop-blur-2xl transition-all focus-within:border-[var(--color-brand-accent)]/50 focus-within:bg-[#000000]/80">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={prompt}
+                onChange={(e) => {
+                  setPrompt(e.target.value);
+                  handleTextareaInput();
+                }}
+                onKeyDown={handleKeyDown}
+                className="w-full resize-none bg-transparent pl-6 pr-16 py-5 text-[1rem] leading-relaxed text-[var(--color-brand-text)] placeholder:text-[var(--color-brand-text)]/40 outline-none max-h-[250px] custom-scrollbar"
+                placeholder="Message the council..."
+                style={{ minHeight: '64px' }}
+              />
+              <div className="absolute bottom-2.5 right-2.5">
+                <button
+                  type="submit"
+                  disabled={isSending || !prompt.trim()}
+                  className="flex h-11 w-11 items-center justify-center rounded-[1.2rem] bg-[var(--color-brand-text)] text-[#000000] transition hover:bg-[var(--color-brand-accent)] disabled:cursor-not-allowed disabled:bg-[var(--color-brand-text)]/10 disabled:text-[var(--color-brand-text)]/40 hover:scale-[1.05] active:scale-[0.95]"
+                >
+                  {isSending ? (
+                    <LoaderCircle className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Send className="h-5 w-5 ml-1" />
+                  )}
+                </button>
+              </div>
+            </form>
+            <div className="mt-3 text-center">
+               <span className="text-[11px] tracking-wider text-[var(--color-brand-text)]/30 font-medium font-sans">
+                 Consilium synthesizes distinct worldviews. Results may vary.
+               </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
