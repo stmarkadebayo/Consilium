@@ -199,14 +199,26 @@ class GeminiProvider(BaseProvider):
             },
             "required": ["agreements", "disagreements", "next_step", "combined_recommendation"],
         }
-        payload = self._generate_json(
-            model=self.synthesis_model,
-            system_instruction=system_instruction,
-            user_prompt=user_prompt,
-            schema=schema,
-            temperature=0.2,
-            max_output_tokens=self.synthesis_max_output_tokens,
-        )
+        try:
+            payload = self._generate_json(
+                model=self.synthesis_model,
+                system_instruction=system_instruction,
+                user_prompt=user_prompt,
+                schema=schema,
+                temperature=0.2,
+                max_output_tokens=self.synthesis_max_output_tokens,
+            )
+        except Exception:
+            fallback = persona_responses[0] if persona_responses else {}
+            return {
+                "agreements": [],
+                "disagreements": [],
+                "next_step": str(fallback.get("recommended_action") or "").strip() or None,
+                "combined_recommendation": (
+                    str(fallback.get("verdict") or "").strip()
+                    or "The council did not produce a stable synthesis for this turn."
+                ),
+            }
         return {
             "agreements": [str(item).strip() for item in payload.get("agreements", []) if str(item).strip()],
             "disagreements": [
