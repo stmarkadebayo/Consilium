@@ -84,14 +84,24 @@ class GeminiProvider(BaseProvider):
                 "status",
             ],
         }
-        payload = self._generate_json(
-            model=self.model,
-            system_instruction=system_instruction,
-            user_prompt=user_prompt,
-            schema=schema,
-            temperature=0.4,
-            max_output_tokens=self.persona_max_output_tokens,
-        )
+        try:
+            payload = self._generate_json(
+                model=self.model,
+                system_instruction=system_instruction,
+                user_prompt=user_prompt,
+                schema=schema,
+                temperature=0.4,
+                max_output_tokens=self.persona_max_output_tokens,
+            )
+        except Exception:
+            return {
+                "response_type": "no_basis",
+                "verdict": f"{display_name} does not have a stable response yet.",
+                "reasoning": "The model did not return a usable grounded answer for this turn.",
+                "recommended_action": "Try again with a narrower prompt or stronger source material.",
+                "confidence": 0.0,
+                "status": "completed",
+            }
         confidence = max(0.0, min(1.0, float(payload.get("confidence", 0.0))))
         return {
             "response_type": self._normalize_response_type(payload.get("response_type")),
