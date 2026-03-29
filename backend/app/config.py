@@ -28,14 +28,14 @@ class Settings(BaseSettings):
     supabase_url: Optional[str] = None
     supabase_publishable_key: Optional[str] = None
 
-    default_model: str = "mock-council"
+    default_model: str = "gemini-2.5-flash"
     gemini_api_key: Optional[str] = None
     gemini_synthesis_model: Optional[str] = "gemini-2.5-flash-lite"
     gemini_persona_max_output_tokens: int = 180
     gemini_synthesis_max_output_tokens: int = 280
     gemini_evidence_char_limit: int = 240
-    embedding_model: Optional[str] = None
-    embedding_dimensions: Optional[int] = None
+    embedding_model: Optional[str] = "gemini-embedding-001"
+    embedding_dimensions: Optional[int] = 3072
     posthog_host: Optional[str] = None
 
     default_user_external_id: str = "dev-user"
