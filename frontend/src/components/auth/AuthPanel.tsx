@@ -20,6 +20,7 @@ export default function AuthPanel() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isLocalMode = !configured;
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -99,15 +100,20 @@ export default function AuthPanel() {
       <div className="rounded-[2.5rem] border border-[var(--color-brand-text)]/10 bg-[color-mix(in_srgb,var(--color-brand-surface)_80%,transparent)] p-8 shadow-[0_32px_120px_rgba(0,0,0,0.3)] md:p-10">
         <div className="mb-8 space-y-3">
           <p className="text-xs font-mono uppercase tracking-[0.28em] text-[var(--color-brand-accent)]">
-            Start here
+            {isLocalMode ? "Local mode" : "Start here"}
           </p>
-          <h2 className="text-3xl font-semibold tracking-tight">Create your council.</h2>
+          <h2 className="text-3xl font-semibold tracking-tight">
+            {isLocalMode ? "Start without auth." : "Create your council."}
+          </h2>
           <p className="text-sm leading-7 text-[var(--color-brand-text)]/62">
-            Sign up, create at least two personas, then move directly into the council chat.
+            {isLocalMode
+              ? "Auth is disabled for local testing. Add your Gemini key on the backend, enter the app, create personas, and test the full council flow immediately."
+              : "Sign up, create at least two personas, then move directly into the council chat."}
           </p>
         </div>
 
-        <div className="mb-6 flex rounded-full border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/45 p-1">
+        {!isLocalMode && (
+          <div className="mb-6 flex rounded-full border border-[var(--color-brand-text)]/10 bg-[var(--color-brand-primary)]/45 p-1">
           <button
             type="button"
             onClick={() => setMode("sign_up")}
@@ -130,11 +136,12 @@ export default function AuthPanel() {
           >
             Sign In
           </button>
-        </div>
+          </div>
+        )}
 
-        {!configured && (
+        {isLocalMode && (
           <div className="mb-6 rounded-[1.5rem] border border-[var(--color-brand-accent)]/20 bg-[var(--color-brand-accent)]/10 px-4 py-3 text-sm leading-6 text-[var(--color-brand-text)]/78">
-            Supabase is not configured. You can continue in local development mode.
+            Set `GEMINI_API_KEY` in `backend/.env` to use Gemini locally. If you leave it blank, the backend falls back to the mock provider.
           </div>
         )}
 
