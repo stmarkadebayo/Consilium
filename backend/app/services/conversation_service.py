@@ -1,21 +1,34 @@
 from __future__ import annotations
 
+import json
+import logging
+from pathlib import Path
 from typing import Optional, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.engines.council_reasoning import CouncilReasoningEngine
-from app.models.conversation import Conversation, Message, PersonaResponse
+from app.engines.council_engine import CouncilEngine
+from app.models.conversation import Conversation, Message
 from app.models.job import Job
 from app.models.user import User
 from app.services.council_service import CouncilService
+from app.services.event_service import EventService
 from app.services.job_service import JobService
+from app.services.memory_service import MemoryService
+from app.services.persona_service import PersonaService
+from app.providers.base import BaseProvider
 
+logger = logging.getLogger(__name__)
+
+PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+def _load_prompt(name: str) -> str:
+    return (PROMPTS_DIR / name).read_text()
 
 class ConversationService:
     @staticmethod
-    def create_conversation(db: Session, *, user: User, title: Optional[str] = None) -> Conversation:
+    def create_conversation(db: Session, *, user: User, title: str | None = None) -> Conversation:
         council = CouncilService.get_or_create_for_user(db, user)
         conversation = Conversation(user_id=user.id, council_id=council.id, title=title)
         db.add(conversation)
@@ -24,42 +37,31 @@ class ConversationService:
         return conversation
 
     @staticmethod
-    def list_conversations(db: Session, *, user_id: str, cursor: Optional[str] = None, limit: int = 20) -> Tuple[list[dict], Optional[str]]:
-        query = (
+    def list_conversations(db: Session, *, user_id: str, limit: int = 50) -> list[dict]:
+        rows = (
             db.query(Conversation)
-            .options(joinedload(Conversation.messages))
             .filter(Conversation.user_id == user_id)
-            .order_by(Conversation.created_at.desc())
+            .order_by(Conversation.updated_at.desc())
+            .limit(limit)
+            .all()
         )
-        if cursor:
-            cursor_row = db.query(Conversation).filter(Conversation.id == cursor, Conversation.user_id == user_id).first()
-            if cursor_row:
-                query = query.filter(Conversation.created_at < cursor_row.created_at)
-
-        rows = query.limit(limit + 1).all()
-        next_cursor = rows[-1].id if len(rows) > limit else None
-        rows = rows[:limit]
-        items = [
+        return [
             {
-                "id": row.id,
-                "title": row.title,
-                "created_at": row.created_at,
-                "updated_at": row.updated_at,
-                "message_count": len(row.messages),
+                "id": r.id,
+                "title": r.title,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                "message_count": len(r.messages) if r.messages else 0,
             }
-            for row in rows
+            for r in rows
         ]
-        return items, next_cursor
 
     @staticmethod
     def get_conversation(db: Session, *, conversation_id: str, user_id: str) -> Optional[Conversation]:
         return (
             db.query(Conversation)
             .options(
-                joinedload(Conversation.messages)
-                .joinedload(Message.persona_responses)
-                .joinedload(PersonaResponse.persona_snapshot),
-                joinedload(Conversation.messages).joinedload(Message.synthesis),
+                joinedload(Conversation.messages).joinedload(Message.persona_snapshot),
             )
             .filter(Conversation.id == conversation_id, Conversation.user_id == user_id)
             .first()
@@ -72,18 +74,44 @@ class ConversationService:
         user: User,
         conversation: Conversation,
         content: str,
+        provider: BaseProvider | None = None,
     ) -> tuple[Message, str]:
+        """Submit a user message and create a council query job."""
         council = CouncilService.get_for_user(db, user.id)
         if not council:
             raise ValueError("Council not found")
 
         members = CouncilService.active_members(council)
         if len(members) < council.min_personas:
-            raise ValueError("At least 2 active personas are required to query the council")
+            raise ValueError(f"At least {council.min_personas} active personas required")
 
-        next_turn = (db.query(func.max(Message.turn_index)).filter(Message.conversation_id == conversation.id).scalar() or 0) + 1
-        message = Message(conversation_id=conversation.id, role="user", content=content, turn_index=next_turn)
+        next_turn = (
+            db.query(func.max(Message.turn_number))
+            .filter(Message.conversation_id == conversation.id)
+            .scalar() or 0
+        ) + 1
+
+        message = Message(
+            conversation_id=conversation.id,
+            role="user",
+            content=content,
+            turn_number=next_turn,
+        )
         db.add(message)
+
+        is_first_turn = next_turn == 1
+        if is_first_turn and provider:
+            try:
+                prompt_template = _load_prompt("conversation_title.txt")
+                prompt = prompt_template.format(user_message=content)
+                title = provider.generate_text(prompt, model_key="synthesis", purpose="title_generation").strip()
+                title = title.strip('"').strip("'")
+                if title:
+                    conversation.title = title
+                    db.add(conversation)
+            except Exception as e:
+                logger.error(f"Failed to generate title: {e}")
+
         db.flush()
 
         job = JobService.create_job(
@@ -93,42 +121,82 @@ class ConversationService:
             payload={"conversation_id": conversation.id, "message_id": message.id},
         )
         db.flush()
+
+        if is_first_turn:
+            EventService.record(
+                db,
+                user_id=user.id,
+                job_id=job.id,
+                event_type="consult_started",
+                payload={
+                    "conversation_id": conversation.id,
+                    "message_id": message.id,
+                },
+            )
+
         db.refresh(message)
         return message, job.id
 
     @staticmethod
-    def process_council_query_job(db: Session, job: Job, *, provider, retrieval_service) -> None:
+    def start_consult(
+        db: Session,
+        *,
+        user: User,
+        content: str,
+        provider: BaseProvider | None = None,
+    ) -> tuple[Conversation, Message, str]:
+        conversation = ConversationService.create_conversation(db, user=user)
+        message, job_id = ConversationService.submit_message(
+            db,
+            user=user,
+            conversation=conversation,
+            content=content,
+            provider=provider,
+        )
+        db.refresh(conversation)
+        return conversation, message, job_id
+
+    @staticmethod
+    def process_council_query_job(db: Session, job: Job, *, provider, settings) -> None:
+        """Background job handler: runs the council engine."""
         payload = job.payload_json or {}
         conversation_id = payload.get("conversation_id")
         message_id = payload.get("message_id")
+
         if not conversation_id or not message_id:
-            JobService.mark_failed(job, "Council query job payload is incomplete")
+            JobService.mark_failed(job, "Incomplete council query job payload")
             return
 
         conversation = (
             db.query(Conversation)
-            .options(joinedload(Conversation.council))
             .filter(Conversation.id == conversation_id, Conversation.user_id == job.user_id)
             .first()
         )
-        if conversation is None:
-            JobService.mark_failed(job, "Conversation not found for council query job")
+        if not conversation:
+            JobService.mark_failed(job, "Conversation not found")
             return
 
-        message = (
+        user_message = (
+            db.query(Message)
+            .filter(Message.id == message_id, Message.conversation_id == conversation.id)
+            .first()
+        )
+        if not user_message:
+            JobService.mark_failed(job, "Message not found")
+            return
+
+        # Check if already processed
+        existing = (
             db.query(Message)
             .filter(
-                Message.id == message_id,
                 Message.conversation_id == conversation.id,
+                Message.turn_number == user_message.turn_number,
+                Message.role == "persona",
             )
             .first()
         )
-        if message is None:
-            JobService.mark_failed(job, "Message not found for council query job")
-            return
-
-        if message.persona_responses or message.synthesis is not None:
-            JobService.mark_completed(job, {"message_id": message.id})
+        if existing:
+            JobService.mark_completed(job, {"message_id": message_id})
             return
 
         council = CouncilService.get_for_user(db, job.user_id)
@@ -138,66 +206,140 @@ class ConversationService:
 
         members = CouncilService.active_members(council)
         if len(members) < council.min_personas:
-            JobService.mark_failed(job, "At least 2 active personas are required to query the council")
+            JobService.mark_failed(job, "Not enough active personas")
             return
 
         try:
-            engine = CouncilReasoningEngine(provider=provider, retrieval_service=retrieval_service)
-            engine.execute(
+            # Create snapshots
+            snapshots = [PersonaService.create_snapshot(db, m.persona) for m in members]
+
+            # Build thread context (3-layer memory)
+            thread_context = MemoryService.build_thread_context(
                 db,
                 conversation=conversation,
-                message=message,
-                members=members,
+                settings=settings,
             )
-            conversation.updated_at = message.created_at
-            JobService.mark_completed(job, {"message_id": message.id})
+
+            # Run council engine
+            engine = CouncilEngine(provider=provider)
+            persona_messages, synthesis_msg = engine.execute(
+                db,
+                conversation=conversation,
+                user_message=user_message,
+                snapshots=snapshots,
+                thread_context=thread_context,
+            )
+
+            # Update rolling summary
+            MemoryService.update_rolling_summary(
+                db,
+                conversation=conversation,
+                provider=provider,
+                settings=settings,
+            )
+
+            conversation.updated_at = user_message.created_at
+            db.add(conversation)
+
+            JobService.mark_completed(job, {"message_id": message_id})
+            EventService.record(
+                db,
+                user_id=job.user_id,
+                job_id=job.id,
+                event_type="council_query_completed",
+                payload={"conversation_id": conversation.id, "message_id": message_id},
+            )
+            if user_message.turn_number == 1:
+                successful_persona_count = sum(
+                    1 for message in persona_messages if message.status == "completed"
+                )
+                if successful_persona_count > 0:
+                    EventService.record(
+                        db,
+                        user_id=job.user_id,
+                        job_id=job.id,
+                        event_type="first_response_completed",
+                        payload={
+                            "conversation_id": conversation.id,
+                            "message_id": message_id,
+                            "successful_persona_count": successful_persona_count,
+                        },
+                    )
+                if synthesis_msg is not None:
+                    EventService.record(
+                        db,
+                        user_id=job.user_id,
+                        job_id=job.id,
+                        event_type="synthesis_completed",
+                        payload={
+                            "conversation_id": conversation.id,
+                            "message_id": message_id,
+                            "synthesis_message_id": synthesis_msg.id,
+                        },
+                    )
         except Exception as error:
+            logger.exception("Council query failed for conversation %s", conversation_id)
             JobService.mark_failed(job, str(error))
+            EventService.record(
+                db,
+                user_id=job.user_id,
+                job_id=job.id,
+                event_type="council_query_failed",
+                payload={"conversation_id": conversation_id, "error": str(error)},
+            )
             raise
         db.flush()
 
     @staticmethod
     def serialize_conversation(conversation: Conversation) -> dict:
-        turns = []
-        for message in sorted(conversation.messages, key=lambda item: item.turn_index):
-            if message.role != "user":
-                continue
-            persona_responses = []
-            for response in message.persona_responses:
-                persona_responses.append(
-                    {
-                        "id": response.id,
-                        "persona_name": response.persona_snapshot.snapshot_json["display_name"],
-                        "response_type": response.response_type,
-                        "verdict": response.verdict,
-                        "reasoning": response.reasoning,
-                        "recommended_action": response.recommended_action,
-                        "confidence": response.confidence,
-                        "status": response.status,
-                        "latency_ms": response.latency_ms,
-                        "evidence_snippets": (response.raw_output_json or {}).get("evidence_snippets", []),
-                    }
-                )
-            turns.append(
-                {
-                    "user_message": {
-                        "id": message.id,
-                        "content": message.content,
-                        "created_at": message.created_at,
-                    },
-                    "persona_responses": persona_responses,
-                    "synthesis": (
-                        {
-                            "id": message.synthesis.id,
-                            "agreements": message.synthesis.agreements,
-                            "disagreements": message.synthesis.disagreements,
-                            "next_step": message.synthesis.next_step,
-                            "combined_recommendation": message.synthesis.combined_recommendation,
-                            "created_at": message.synthesis.created_at,
-                        }
-                        if message.synthesis
-                        else None
-                    ),
+        """Serialize a conversation with grouped turns."""
+        turns: dict[int, dict] = {}
+
+        for message in sorted(conversation.messages, key=lambda m: (m.turn_number, m.created_at)):
+            turn_num = message.turn_number
+            if turn_num not in turns:
+                turns[turn_num] = {
+                    "turn_number": turn_num,
+                    "user_message": None,
+                    "persona_responses": [],
+                    "synthesis": None,
                 }
-            )
-        return {"id": conversation.id, "title": conversation.title, "turns": turns}
+
+            if message.role == "user":
+                turns[turn_num]["user_message"] = {
+                    "id": message.id,
+                    "content": message.content,
+                    "created_at": message.created_at.isoformat() if message.created_at else None,
+                }
+            elif message.role == "persona":
+                snapshot = message.persona_snapshot
+                persona_name = "Unknown"
+                if snapshot and snapshot.snapshot_json:
+                    persona_name = snapshot.snapshot_json.get("display_name", "Unknown")
+
+                turns[turn_num]["persona_responses"].append({
+                    "id": message.id,
+                    "persona_name": persona_name,
+                    "content": message.content,
+                    "answer_mode": (message.internal_json or {}).get("answer_mode"),
+                    "confidence": (message.internal_json or {}).get("confidence"),
+                    "stance": (message.internal_json or {}).get("stance"),
+                    "latency_ms": message.latency_ms,
+                    "status": message.status,
+                })
+            elif message.role == "synthesis":
+                internal = message.internal_json or {}
+                turns[turn_num]["synthesis"] = {
+                    "id": message.id,
+                    "agreements": internal.get("agreements", []),
+                    "disagreements": internal.get("disagreements", []),
+                    "next_step": internal.get("next_step"),
+                    "combined_recommendation": internal.get("combined_recommendation", message.content),
+                    "created_at": message.created_at.isoformat() if message.created_at else None,
+                }
+
+        return {
+            "id": conversation.id,
+            "title": conversation.title,
+            "turns": [turns[k] for k in sorted(turns.keys())],
+        }

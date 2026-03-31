@@ -1,87 +1,92 @@
 from __future__ import annotations
 
-from typing import Optional
+from fastapi import APIRouter, HTTPException, Request
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-
-from app.dependencies import get_current_user, get_db
-from app.models.user import User
-from app.schemas.conversation import (
-    ConversationCreate,
-    ConversationListRead,
-    ConversationRead,
-    ConversationSummaryRead,
-    MessageCreate,
-    TurnSubmissionRead,
+from app.dependencies import DbDep, UserDep
+from app.schemas import (
+    ConversationSummaryResponse,
+    CreateConversationRequest,
+    StartConsultRequest,
+    StartConsultResponse,
+    SubmitMessageRequest,
+    SubmitMessageResponse,
 )
 from app.services.conversation_service import ConversationService
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
-@router.post("", response_model=ConversationSummaryRead, status_code=status.HTTP_201_CREATED)
-def create_conversation(
-    payload: ConversationCreate,
-    db=Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> ConversationSummaryRead:
-    conversation = ConversationService.create_conversation(db, user=current_user, title=payload.title)
-    db.commit()
-    db.refresh(conversation)
-    return ConversationSummaryRead(
-        id=conversation.id,
-        title=conversation.title,
-        created_at=conversation.created_at,
-        updated_at=conversation.updated_at,
-        message_count=0,
+@router.get("")
+def list_conversations(user: UserDep, db: DbDep):
+    items = ConversationService.list_conversations(db, user_id=user.id)
+    return {"conversations": items}
+
+
+@router.post("")
+def create_conversation(body: CreateConversationRequest, user: UserDep, db: DbDep):
+    conversation = ConversationService.create_conversation(db, user=user, title=body.title)
+    return {
+        "id": conversation.id,
+        "title": conversation.title,
+        "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
+        "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
+        "message_count": 0,
+    }
+
+
+@router.post("/consult", response_model=StartConsultResponse)
+def start_consult(
+    body: StartConsultRequest,
+    user: UserDep,
+    db: DbDep,
+    request: Request,
+):
+    try:
+        conversation, message, job_id = ConversationService.start_consult(
+            db,
+            user=user,
+            content=body.content,
+            provider=request.app.state.provider,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return StartConsultResponse(
+        conversation_id=conversation.id,
+        message_id=message.id,
+        job_id=job_id,
     )
 
 
-@router.get("", response_model=ConversationListRead)
-def list_conversations(
-    cursor: Optional[str] = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=50),
-    db=Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> ConversationListRead:
-    conversations, next_cursor = ConversationService.list_conversations(
-        db,
-        user_id=current_user.id,
-        cursor=cursor,
-        limit=limit,
+@router.get("/{conversation_id}")
+def get_conversation(conversation_id: str, user: UserDep, db: DbDep):
+    conversation = ConversationService.get_conversation(
+        db, conversation_id=conversation_id, user_id=user.id
     )
-    return ConversationListRead(conversations=conversations, next_cursor=next_cursor)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return ConversationService.serialize_conversation(conversation)
 
 
-@router.get("/{conversation_id}", response_model=ConversationRead)
-def get_conversation(conversation_id: str, db=Depends(get_db), current_user: User = Depends(get_current_user)) -> ConversationRead:
-    conversation = ConversationService.get_conversation(db, conversation_id=conversation_id, user_id=current_user.id)
-    if conversation is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    return ConversationRead(**ConversationService.serialize_conversation(conversation))
-
-
-@router.post("/{conversation_id}/messages", response_model=TurnSubmissionRead, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{conversation_id}/messages", response_model=SubmitMessageResponse)
 def submit_message(
     conversation_id: str,
-    payload: MessageCreate,
+    body: SubmitMessageRequest,
+    user: UserDep,
+    db: DbDep,
     request: Request,
-    db=Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> TurnSubmissionRead:
-    conversation = ConversationService.get_conversation(db, conversation_id=conversation_id, user_id=current_user.id)
-    if conversation is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+):
+    conversation = ConversationService.get_conversation(
+        db, conversation_id=conversation_id, user_id=user.id
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
     try:
         message, job_id = ConversationService.submit_message(
-            db,
-            user=current_user,
-            conversation=conversation,
-            content=payload.content,
+            db, user=user, conversation=conversation, content=body.content, provider=request.app.state.provider
         )
-        db.commit()
-        request.app.state.job_runner.notify()
-        return TurnSubmissionRead(message_id=message.id, job_id=job_id)
-    except ValueError as error:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return SubmitMessageResponse(message_id=message.id, job_id=job_id)
