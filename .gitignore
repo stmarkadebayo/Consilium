@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+backend/.venv312/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Node
+node_modules/
+.next/
+out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.gitignore
+*.gitkeep
+GEMINI.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
+
+# Database
+*.sql.bak
+/backend/*.db
+/backend/*.db-shm
+/backend/*.db-wal
+
+# Coverage
+htmlcov/
+.coverage
+coverage.xml
+
+/frontend-*.png
+
+
+docs/
+Consilium_MVP_Brief.docx
