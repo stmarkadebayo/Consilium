@@ -1,85 +1,141 @@
 @import "tailwindcss";
 
-:root, [data-theme="dark"] {
-  --color-brand-primary: #0D0D12; /* Obsidian */
-  --color-brand-accent: #C9A84C; /* Champagne */
-  --color-brand-accent-amber: #C9A84C; 
-  --color-brand-background: #0D0D12;
-  --color-brand-surface: #2A2A35; /* Slate */
-  --color-brand-text: #FAF8F5; /* Ivory */
-  
-  /* Navbar specifically needs GSAP interpolatable hexes/rgbas */
-  --color-navbar-bg: rgba(10, 10, 15, 0.6);
-  --color-navbar-border: rgba(250, 248, 245, 0.1);
+/* ===== Consilium Design Tokens ===== */
+/* Midnight Luxe — calm, editorial, advisory */
+:root {
+  --color-primary: #0D0D12;
+  --color-surface: #16161D;
+  --color-surface-raised: #1E1E28;
+  --color-surface-hover: #252532;
+  --color-border: rgba(250, 248, 245, 0.08);
+  --color-border-strong: rgba(250, 248, 245, 0.14);
+  --color-accent: #C9A84C;
+  --color-accent-muted: rgba(201, 168, 76, 0.15);
+  --color-text: #FAF8F5;
+  --color-text-secondary: rgba(250, 248, 245, 0.60);
+  --color-text-tertiary: rgba(250, 248, 245, 0.38);
+  --color-success: #4ADE80;
+  --color-warning: #FBBF24;
+  --color-error: #F87171;
 
-  --font-sans: var(--font-inter);
-  --font-serif: var(--font-playfair);
-  --font-mono: var(--font-jetbrains);
+  --radius-sm: 0.5rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 2rem;
+  --radius-full: 9999px;
 }
 
-[data-theme="light"] {
-  --color-brand-primary: #FAF8F5; /* Ivory primary for light mode */
-  --color-brand-accent: #B08D30; /* Slightly darker gold/champagne for contrast */
-  --color-brand-accent-amber: #B08D30;
-  --color-brand-background: #F2F0E9; /* Warm off-white */
-  --color-brand-surface: #E8E4DD; /* Very light slate substitute */
-  --color-brand-text: #0D0D12; /* Obsidian text */
-  
-  --color-navbar-bg: rgba(250, 248, 245, 0.6);
-  --color-navbar-border: rgba(13, 13, 18, 0.1);
+/* ===== Base ===== */
+* {
+  box-sizing: border-box;
 }
 
-@theme {
-  /* Mapping dynamic CSS variables into Tailwind so colors adapt properly */
-  --color-brand-primary: var(--color-brand-primary);
-  --color-brand-accent: var(--color-brand-accent);
-  --color-brand-accent-amber: var(--color-brand-accent-amber);
-  --color-brand-background: var(--color-brand-background);
-  --color-brand-surface: var(--color-brand-surface);
-  --color-brand-text: var(--color-brand-text);
-  
-  --font-sans: var(--font-sans);
-  --font-serif: var(--font-serif);
-  --font-mono: var(--font-mono);
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background-color: var(--color-primary);
+  color: var(--color-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
 }
 
-@layer base {
-  body {
-    background-color: var(--color-brand-background);
-    color: var(--color-brand-text);
-    cursor: auto;
-    overflow-x: hidden;
-  }
+/* ===== Typography ===== */
+.font-serif {
+  font-family: 'Playfair Display', Georgia, serif;
 }
 
-@layer utilities {
-  .clip-path-reveal {
-    clip-path: inset(100% 0 0 0);
-  }
-  
-  .clip-path-visible {
-    clip-path: inset(0% 0 0 0);
-  }
+.font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
-/* Global Noise Overlay */
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+}
+
+/* ===== Utilities ===== */
 .noise-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0;
   pointer-events: none;
-  z-index: 9999;
-  opacity: 0.05;
+  z-index: 50;
+  opacity: 0.04;
+  mix-blend-mode: soft-light;
 }
 
-/* Base styles for split-type */
-.line, .word, .char {
-  display: inline-block;
+.glass {
+  background: rgba(22, 22, 29, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
-.marketing-cursor-none,
-.marketing-cursor-none * {
-  cursor: none !important;
+/* ===== Animations ===== */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-raised) 25%,
+    var(--color-surface-hover) 50%,
+    var(--color-surface-raised) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+
+/* ===== Focus ===== */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ===== Selection ===== */
+::selection {
+  background: var(--color-accent-muted);
+  color: var(--color-text);
+}
+
+.message-input-field,
+.message-input-field:focus,
+.message-input-field:focus-visible {
+  outline: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  -webkit-appearance: none;
+  appearance: none;
 }

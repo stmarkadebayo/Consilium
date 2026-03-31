@@ -1,30 +1,24 @@
 {
-  "name": "frontend",
+  "name": "consilium-frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "test:e2e": "playwright test"
+    "lint": "eslint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.99.1",
     "clsx": "^2.1.1",
-    "gsap": "^3.14.2",
-    "lenis": "^1.3.18",
     "lucide-react": "^0.577.0",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "split-type": "^0.3.4",
+    "react-textarea-autosize": "^8.5.9",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
