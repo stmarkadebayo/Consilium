@@ -15,7 +15,7 @@ class Council(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), default="My Council")
-    min_personas: Mapped[int] = mapped_column(Integer, default=2)
+    min_personas: Mapped[int] = mapped_column(Integer, default=3)
     max_personas: Mapped[int] = mapped_column(Integer, default=5)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
