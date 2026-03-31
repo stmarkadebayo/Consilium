@@ -1,6 +1,5 @@
 import { Inter, Playfair_Display, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import { SupabaseAuthProvider } from '@/components/auth/SupabaseAuthProvider';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -23,7 +22,7 @@ const jetbrains = JetBrains_Mono({
 
 export const metadata = {
   title: 'Consilium — Private Council of Minds',
-  description: 'Assemble a council of AI advisors. Get structured perspective, visible disagreement, and actionable synthesis.',
+  description: 'Assemble a council of AI personas modeled from public ideas. Get structured perspective, visible disagreement, and actionable synthesis.',
 };
 
 export default function RootLayout({
@@ -33,27 +32,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${playfair.variable} ${jetbrains.variable}`} suppressHydrationWarning>
-      <body className="antialiased bg-[var(--color-brand-primary)] text-[var(--color-brand-text)] overscroll-none" suppressHydrationWarning>
-        
+      <body className="antialiased overscroll-none" suppressHydrationWarning>
         {/* Global Noise Overlay */}
-        <svg
-          className="pointer-events-none fixed isolate z-50 opacity-5 w-full h-full mix-blend-soft-light"
-          style={{ width: "100vw", height: "100vh" }}
-        >
-          <filter id="pedroduarteisalegend">
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.80"
-              numOctaves="4"
-              stitchTiles="stitch"
-            ></feTurbulence>
+        <svg className="noise-overlay" aria-hidden="true">
+          <filter id="noise-filter">
+            <feTurbulence type="fractalNoise" baseFrequency="0.80" numOctaves="4" stitchTiles="stitch" />
           </filter>
-          <rect width="100%" height="100%" filter="url(#pedroduarteisalegend)"></rect>
+          <rect width="100%" height="100%" filter="url(#noise-filter)" />
         </svg>
 
-        <SupabaseAuthProvider>
-          {children}
-        </SupabaseAuthProvider>
+        {children}
       </body>
     </html>
   );

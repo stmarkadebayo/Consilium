@@ -1,5 +1,5 @@
-import StudioPage from "@/components/app/StudioPage";
+import { redirect } from "next/navigation";
 
-export default function AppPage() {
-  return <StudioPage />;
+export default function AppIndexPage() {
+  redirect("/app/chat");
 }
