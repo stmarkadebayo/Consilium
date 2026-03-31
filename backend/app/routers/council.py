@@ -1,52 +1,47 @@
-from fastapi import APIRouter, Depends
+from __future__ import annotations
 
-from app.dependencies import get_current_user, get_db
-from app.models.user import User
-from app.schemas.council import CouncilMemberRead, CouncilRead, CouncilUpdate
+from fastapi import APIRouter
+
+from app.dependencies import DbDep, UserDep
+from app.schemas import CouncilMemberResponse, CouncilResponse, UpdateCouncilRequest
 from app.services.council_service import CouncilService
 
-router = APIRouter(tags=["council"])
+router = APIRouter(prefix="/council", tags=["council"])
 
 
-def serialize_council(council) -> CouncilRead:
-    members = [
-        CouncilMemberRead(
-            id=member.id,
-            persona_id=member.persona_id,
-            display_name=member.persona.display_name,
-            persona_type=member.persona.persona_type,
-            position=member.position,
-            is_active=member.is_active,
-        )
-        for member in council.members
-    ]
-    return CouncilRead(
+@router.get("", response_model=CouncilResponse)
+def get_council(user: UserDep, db: DbDep):
+    council = CouncilService.get_or_create_for_user(db, user)
+    return _serialize_council(council)
+
+
+@router.patch("", response_model=CouncilResponse)
+def update_council(body: UpdateCouncilRequest, user: UserDep, db: DbDep):
+    council = CouncilService.get_or_create_for_user(db, user)
+    council.name = body.name
+    db.add(council)
+    db.flush()
+    db.refresh(council)
+    return _serialize_council(council)
+
+
+def _serialize_council(council) -> CouncilResponse:
+    return CouncilResponse(
         id=council.id,
         name=council.name,
         min_personas=council.min_personas,
         max_personas=council.max_personas,
         created_at=council.created_at,
         updated_at=council.updated_at,
-        members=members,
+        members=[
+            CouncilMemberResponse(
+                id=m.id,
+                persona_id=m.persona_id,
+                display_name=m.persona.display_name,
+                persona_type=m.persona.persona_type,
+                position=m.position,
+                is_active=m.is_active,
+            )
+            for m in council.members
+        ],
     )
-
-
-@router.get("/council", response_model=CouncilRead)
-def get_council(db=Depends(get_db), current_user: User = Depends(get_current_user)) -> CouncilRead:
-    council = CouncilService.get_or_create_for_user(db, current_user)
-    db.commit()
-    db.refresh(council)
-    return serialize_council(council)
-
-
-@router.patch("/council", response_model=CouncilRead)
-def update_council(
-    payload: CouncilUpdate,
-    db=Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CouncilRead:
-    council = CouncilService.get_or_create_for_user(db, current_user)
-    council = CouncilService.update_name(db, council, payload.name)
-    db.commit()
-    db.refresh(council)
-    return serialize_council(council)
