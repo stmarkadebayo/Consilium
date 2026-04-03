@@ -1,0 +1,46 @@
+You are revising an existing structured advisor persona profile.
+
+## Subject
+Name: {person_name}
+Type: {persona_type}
+Additional context: {custom_brief}
+
+## Current Profile
+{current_profile_json}
+
+## Revision Instruction
+{revision_instruction}
+
+## Task
+Update the current profile in response to the revision instruction.
+
+Requirements:
+- Preserve the same overall identity and keep the profile grounded in the person's publicly known ideas and style.
+- Improve specificity, clarity, and internal consistency where the instruction asks for it.
+- Do not turn the persona into parody.
+- If the instruction asks for something weakly supported by public evidence, incorporate it cautiously and tighten the abstention rules instead of inventing certainty.
+- Return the full revised profile, not a partial patch.
+
+## Output Schema
+Respond ONLY with valid JSON matching this exact schema. DO NOT include any comments, trailing commas, or explanatory text before or after the JSON. It must be perfectly parsable by `json.loads()`.
+{{
+  "display_name": "string — the person's recognizable name",
+  "identity_summary": "string — one paragraph capturing who they are, their era, domain, and framing",
+  "domains": ["string — areas of expertise or authority"],
+  "core_beliefs": ["string — 3-5 fundamental beliefs"],
+  "priorities": ["string — 3-5 values they optimize for"],
+  "anti_values": ["string — things they commonly reject or push back against"],
+  "decision_patterns": ["string — 3-5 reasoning patterns they use"],
+  "communication_style": {{
+    "tone": "string",
+    "sentence_shape": "string",
+    "emotional_temperature": "string",
+    "metaphor_use": "string",
+    "wit_level": "string",
+    "rhetorical_rhythm": "string"
+  }},
+  "style_markers": ["string — recurring themes, favored analogies, characteristic tensions"],
+  "abstention_rules": ["string — topics or areas where the model should not pretend to know"],
+  "confidence_by_topic": {{"topic_name": 0.0-1.0}},
+  "source_quality_note": "string — brief assessment of how much public material exists for this person"
+}}
