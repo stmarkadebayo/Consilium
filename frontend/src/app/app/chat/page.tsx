@@ -36,15 +36,17 @@ export default function ChatEmptyState() {
   };
 
   return (
-    <div className="flex-1 animate-fade-in p-8">
-      <div className="flex h-full w-full items-center justify-center">
-        <div className="flex w-full max-w-4xl flex-col items-center text-center">
-          <h2 className="mb-3 font-serif text-3xl italic">Council Assembled</h2>
-          <p className="mb-10 max-w-xl text-sm text-[var(--color-text-secondary)]">
-            Your advisors await. Present a scenario, decision, or dilemma to receive parallel perspectives and synthesis.
-          </p>
+    <div className="flex h-full min-h-0 w-full animate-fade-in px-8 py-10">
+      <div className="flex min-h-0 flex-1 w-full items-center justify-center">
+        <div className="flex w-full max-w-3xl -translate-y-6 flex-col items-center justify-center text-center">
+          <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+            <h2 className="mb-3 font-serif text-3xl italic">Council Assembled</h2>
+            <p className="mb-7 max-w-lg text-sm text-[var(--color-text-secondary)]">
+              Your advisors await. Present a scenario, decision, or dilemma to receive parallel perspectives and synthesis.
+            </p>
+          </div>
 
-          <div className="w-full">
+          <div className="mx-auto w-full max-w-2xl">
             <MessageInput onSend={handleSend} isSending={isCreating} />
           </div>
 

@@ -107,7 +107,7 @@ export function ConversationView({
         ) : (
           <div className="mt-16 flex flex-1 flex-col items-center justify-center p-8 text-center animate-fade-in">
             <h2 className="mb-3 font-serif text-[1.7rem] italic text-white">Council Assembled</h2>
-            <p className="max-w-sm text-[0.92rem] text-[var(--color-text-secondary)]">
+            <p className="max-w-md text-[0.92rem] text-[var(--color-text-secondary)]">
               Your advisors await. Present a scenario, decision, or dilemma to receive parallel perspectives and synthesis.
             </p>
           </div>
