@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.dependencies import DbDep, UserDep
-from app.schemas import CouncilMemberResponse, CouncilResponse, UpdateCouncilRequest
+from app.schemas import CouncilMemberResponse, CouncilResponse, UpdateCouncilMemberRequest, UpdateCouncilRequest
 from app.services.council_service import CouncilService
 
 router = APIRouter(prefix="/council", tags=["council"])
@@ -25,6 +25,23 @@ def update_council(body: UpdateCouncilRequest, user: UserDep, db: DbDep):
     return _serialize_council(council)
 
 
+@router.patch("/members/{member_id}", response_model=CouncilResponse)
+def update_council_member(member_id: str, body: UpdateCouncilMemberRequest, user: UserDep, db: DbDep):
+    council = CouncilService.get_or_create_for_user(db, user)
+    member = CouncilService.get_member(council, member_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="Council member not found")
+
+    if body.is_active is not None:
+        CouncilService.set_member_active(db, member, body.is_active)
+    if body.position is not None:
+        CouncilService.move_member(db, council, member, body.position)
+
+    CouncilService.sync_onboarding_state(db, user=user, council=council)
+    db.refresh(council)
+    return _serialize_council(council)
+
+
 def _serialize_council(council) -> CouncilResponse:
     return CouncilResponse(
         id=council.id,
@@ -41,6 +58,8 @@ def _serialize_council(council) -> CouncilResponse:
                 persona_type=m.persona.persona_type,
                 position=m.position,
                 is_active=m.is_active,
+                identity_summary=m.persona.identity_summary,
+                status=m.persona.status,
             )
             for m in council.members
         ],
