@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.engines.persona_pipeline import PersonaPipeline
 from app.models.council import CouncilMember
 from app.models.job import Job
-from app.models.persona import Persona, PersonaDraft, PersonaSnapshot, PersonaSource
+from app.models.persona import Persona, PersonaDraft, PersonaDraftRevision, PersonaSnapshot, PersonaSource
 from app.models.user import User
 from app.services.council_service import CouncilService
 from app.services.event_service import EventService
@@ -29,6 +29,26 @@ class PersonaService:
             .options(joinedload(Persona.council_members), joinedload(Persona.sources))
             .filter(Persona.id == persona_id, Persona.user_id == user_id)
             .first()
+        )
+
+    @staticmethod
+    def delete_persona(db: Session, persona: Persona, *, user: User) -> None:
+        council = CouncilService.get_for_user(db, user.id)
+        persona_id = persona.id
+        display_name = persona.display_name
+
+        db.delete(persona)
+        db.flush()
+
+        if council:
+            db.refresh(council)
+            CouncilService.sync_onboarding_state(db, user=user, council=council)
+
+        EventService.record(
+            db,
+            user_id=user.id,
+            event_type="persona_deleted",
+            payload={"persona_id": persona_id, "display_name": display_name},
         )
 
     @staticmethod
@@ -183,6 +203,12 @@ class PersonaService:
             draft.draft_profile_json = profile
             draft.review_status = "ready"
             db.add(draft)
+            PersonaService.create_draft_revision(
+                db,
+                draft,
+                revision_kind="initial",
+                instruction="Initial generated profile",
+            )
             JobService.mark_completed(job, {"draft_id": draft.id})
         except Exception as error:
             logger.exception("Persona creation failed for draft %s", draft_id)
@@ -210,9 +236,111 @@ class PersonaService:
         draft.draft_profile_json = merged
         draft.review_status = "ready"
         db.add(draft)
+        PersonaService.create_draft_revision(
+            db,
+            draft,
+            revision_kind="manual",
+            instruction="Manual profile edits",
+        )
         db.flush()
         db.refresh(draft)
         return draft
+
+    @staticmethod
+    def revise_draft(
+        db: Session,
+        draft: PersonaDraft,
+        *,
+        instruction: str,
+        provider,
+    ) -> PersonaDraft:
+        if draft.review_status == "generating":
+            raise ValueError("Draft is still generating")
+        if draft.review_status == "approved":
+            raise ValueError("Approved drafts cannot be modified")
+        if not draft.draft_profile_json:
+            raise ValueError("Draft profile is empty")
+
+        pipeline = PersonaPipeline(provider=provider)
+        revised_profile = pipeline.revise_profile(
+            person_name=draft.input_name,
+            persona_type=draft.persona_type,
+            current_profile=draft.draft_profile_json,
+            revision_instruction=instruction,
+            custom_brief=draft.custom_brief,
+        )
+        revised_profile["generated_prompt"] = pipeline.generate_runtime_prompt(revised_profile)
+
+        draft.draft_profile_json = revised_profile
+        draft.review_status = "ready"
+        db.add(draft)
+        PersonaService.create_draft_revision(
+            db,
+            draft,
+            revision_kind="ai",
+            instruction=instruction,
+        )
+
+        EventService.record(
+            db,
+            user_id=draft.user_id,
+            event_type="persona_draft_revised",
+            payload={"draft_id": draft.id, "instruction": instruction[:500]},
+        )
+
+        db.flush()
+        db.refresh(draft)
+        return draft
+
+    @staticmethod
+    def list_draft_revisions(draft: PersonaDraft) -> list[PersonaDraftRevision]:
+        return list(draft.revisions)
+
+    @staticmethod
+    def restore_draft_revision(
+        db: Session,
+        draft: PersonaDraft,
+        revision_id: str,
+    ) -> PersonaDraft:
+        if draft.review_status == "generating":
+            raise ValueError("Draft is still generating")
+        if draft.review_status == "approved":
+            raise ValueError("Approved drafts cannot be modified")
+
+        revision = next((item for item in draft.revisions if item.id == revision_id), None)
+        if revision is None:
+            raise ValueError("Revision not found")
+
+        draft.draft_profile_json = revision.profile_json or {}
+        draft.review_status = "ready"
+        db.add(draft)
+        PersonaService.create_draft_revision(
+            db,
+            draft,
+            revision_kind="restore",
+            instruction=f"Restored revision {revision.id}",
+        )
+        db.flush()
+        db.refresh(draft)
+        return draft
+
+    @staticmethod
+    def create_draft_revision(
+        db: Session,
+        draft: PersonaDraft,
+        *,
+        revision_kind: str,
+        instruction: str | None = None,
+    ) -> PersonaDraftRevision:
+        revision = PersonaDraftRevision(
+            draft_id=draft.id,
+            revision_kind=revision_kind,
+            instruction=instruction,
+            profile_json=draft.draft_profile_json or {},
+        )
+        db.add(revision)
+        db.flush()
+        return revision
 
     @staticmethod
     def approve_draft(
