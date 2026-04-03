@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.council import Council, CouncilMember
@@ -17,13 +18,27 @@ class CouncilService:
             return council
         council = Council(user_id=user.id)
         db.add(council)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            council = db.query(Council).filter(Council.user_id == user.id).first()
+            if council:
+                return council
+            raise
         db.refresh(council)
         return council
 
     @staticmethod
     def get_for_user(db: Session, user_id: str) -> Optional[Council]:
         return db.query(Council).filter(Council.user_id == user_id).first()
+
+    @staticmethod
+    def get_member(council: Council, member_id: str) -> Optional[CouncilMember]:
+        for member in council.members:
+            if member.id == member_id:
+                return member
+        return None
 
     @staticmethod
     def active_members(council: Council) -> list[CouncilMember]:
@@ -57,6 +72,37 @@ class CouncilService:
                 member.is_active = True
                 db.add(member)
         db.flush()
+
+    @staticmethod
+    def set_member_active(db: Session, member: CouncilMember, is_active: bool) -> CouncilMember:
+        member.is_active = is_active
+        db.add(member)
+        db.flush()
+        db.refresh(member)
+        return member
+
+    @staticmethod
+    def move_member(db: Session, council: Council, member: CouncilMember, new_position: int) -> CouncilMember:
+        ordered_members = list(council.members)
+        if not ordered_members:
+            return member
+
+        clamped_position = max(0, min(new_position, len(ordered_members) - 1))
+        current_index = next((index for index, item in enumerate(ordered_members) if item.id == member.id), None)
+        if current_index is None:
+            raise ValueError("Council member not found")
+
+        if current_index != clamped_position:
+            ordered_members.pop(current_index)
+            ordered_members.insert(clamped_position, member)
+
+        for index, item in enumerate(ordered_members):
+            item.position = index
+            db.add(item)
+
+        db.flush()
+        db.refresh(member)
+        return member
 
     @staticmethod
     def sync_onboarding_state(db: Session, *, user: User, council: Council) -> None:
