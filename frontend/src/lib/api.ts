@@ -1,5 +1,5 @@
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8001";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, options: RequestInit & { bodyJson?: unknown } = {}): Promise<T> {
   const { bodyJson, headers, ...rest } = options;
@@ -22,7 +22,25 @@ async function request<T>(path: string, options: RequestInit & { bodyJson?: unkn
     throw new Error(message);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
+}
+
+async function deletePersonaRequest(id: string): Promise<void> {
+  try {
+    await request<void>(`/personas/${id}/delete`, { method: "POST" });
+    return;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("404") && !message.includes("405")) {
+      throw error;
+    }
+  }
+
+  await request<void>(`/personas/${id}`, { method: "DELETE" });
 }
 
 // ===== Types =====
@@ -42,6 +60,8 @@ export type CouncilMember = {
   persona_type: string;
   position: number;
   is_active: boolean;
+  identity_summary: string | null;
+  status: string;
 };
 
 export type Council = {
@@ -75,16 +95,49 @@ export type Persona = {
   updated_at: string | null;
 };
 
+export type PersonaProfile = {
+  display_name?: string;
+  identity_summary?: string | null;
+  domains?: string[];
+  core_beliefs?: string[];
+  priorities?: string[];
+  anti_values?: string[];
+  decision_patterns?: string[];
+  communication_style?: {
+    tone?: string;
+    sentence_shape?: string;
+    emotional_temperature?: string;
+    metaphor_use?: string;
+    wit_level?: string;
+    rhetorical_rhythm?: string;
+    [key: string]: string | undefined;
+  };
+  style_markers?: string[];
+  abstention_rules?: string[];
+  confidence_by_topic?: Record<string, number>;
+  source_quality_note?: string;
+  generated_prompt?: string;
+  [key: string]: unknown;
+};
+
 export type PersonaDraft = {
   id: string;
   input_name: string;
   persona_type: string;
   custom_brief: string | null;
   review_status: string;
-  draft_profile: Record<string, unknown>;
+  draft_profile: PersonaProfile;
   job_id: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type PersonaDraftRevision = {
+  id: string;
+  revision_kind: string;
+  instruction: string | null;
+  profile: PersonaProfile;
+  created_at: string;
 };
 
 export type ConversationSummary = {
@@ -159,11 +212,16 @@ export const api = {
   getCouncil: () => request<Council>("/council"),
   updateCouncil: (name: string) =>
     request<Council>("/council", { method: "PATCH", bodyJson: { name } }),
+  updateCouncilMember: (
+    memberId: string,
+    payload: { is_active?: boolean; position?: number }
+  ) => request<Council>(`/council/members/${memberId}`, { method: "PATCH", bodyJson: payload }),
 
   // Personas
   listPersonas: async () =>
     (await request<{ personas: Persona[] }>("/personas")).personas,
   getPersona: (id: string) => request<Persona>(`/personas/${id}`),
+  deletePersona: (id: string) => deletePersonaRequest(id),
   deactivatePersona: (id: string) =>
     request<Persona>(`/personas/${id}/deactivate`, { method: "POST" }),
   activatePersona: (id: string) =>
@@ -177,6 +235,17 @@ export const api = {
     request<PersonaDraft>(`/personas/drafts/${id}`, {
       method: "PATCH",
       bodyJson: { draft_profile },
+    }),
+  reviseDraft: (id: string, instruction: string) =>
+    request<PersonaDraft>(`/personas/drafts/${id}/revise`, {
+      method: "POST",
+      bodyJson: { instruction },
+    }),
+  listDraftRevisions: (id: string) =>
+    request<PersonaDraftRevision[]>(`/personas/drafts/${id}/revisions`),
+  restoreDraftRevision: (id: string, revisionId: string) =>
+    request<PersonaDraft>(`/personas/drafts/${id}/revisions/${revisionId}/restore`, {
+      method: "POST",
     }),
   approveDraft: (id: string) =>
     request<{ persona_id: string; council_member_id: string | null }>(
