@@ -9,7 +9,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import clsx from "clsx";
 
-function CouncilGlyph({ className = "" }: { className?: string }) {
+export function CouncilGlyph({ className = "" }: { className?: string }) {
   return (
     <span
       className={clsx(
@@ -24,10 +24,8 @@ function CouncilGlyph({ className = "" }: { className?: string }) {
 
 export function ConversationSidebar({
   collapsed,
-  onToggle,
 }: {
   collapsed: boolean;
-  onToggle: () => void;
 }) {
   const { conversations, fetchConversations } = useConversationList();
   const { council, fetchCouncil } = useCouncil();
@@ -67,12 +65,12 @@ export function ConversationSidebar({
   return (
     <aside
       className={clsx(
-        "z-20 flex h-full flex-shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-        collapsed ? "w-16" : "w-64 sm:w-80"
+        "z-20 flex h-full flex-shrink-0 flex-col overflow-hidden bg-[var(--color-surface)] transition-[width,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        collapsed ? "w-0 border-r-0 opacity-0" : "w-64 border-r border-[var(--color-border)] opacity-100 sm:w-80"
       )}
     >
       <div className="flex h-12 flex-none items-center px-5">
-        <div className={clsx("flex w-full items-center", collapsed ? "justify-center" : "justify-between gap-3")}>
+        <div className="flex w-full items-center">
           <div
             className={clsx(
               "overflow-hidden whitespace-nowrap",
@@ -86,14 +84,6 @@ export function ConversationSidebar({
               </h1>
             </Link>
           </div>
-
-          <button
-            onClick={onToggle}
-            className="transition-transform hover:scale-[1.04]"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            <CouncilGlyph />
-          </button>
         </div>
       </div>
 
@@ -103,30 +93,28 @@ export function ConversationSidebar({
           collapsed ? "items-center gap-6 px-4 py-6" : "px-5 py-7"
         )}
       >
-        <div className="relative h-12 w-full">
+        <Link
+          href="/app/setup"
+          className={clsx(
+            "group w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-hover)]",
+            collapsed ? "flex h-12 items-center justify-center" : "flex items-center gap-3 px-4 py-3"
+          )}
+          aria-label="View and edit council"
+        >
+          <CouncilGlyph className="transition-transform group-hover:scale-[1.04]" />
           <div
             className={clsx(
-              "absolute inset-0 flex items-center text-xs font-mono uppercase tracking-[0.22em] text-[var(--color-text-secondary)]",
+              "min-w-0 overflow-hidden whitespace-nowrap",
               motionClass,
-              collapsed ? "pointer-events-none translate-y-1 opacity-0" : "translate-y-0 opacity-100"
+              collapsed ? "max-w-0 opacity-0" : "max-w-[13rem] opacity-100"
             )}
           >
-            <span className="flex w-12 justify-center">
-              <span className="h-2 w-2 rounded-full bg-[var(--color-success)] shadow-[0_0_8px_rgba(74,222,128,0.45)]" />
-            </span>
-            <span>{`Council Of ${activeMembers.length} Active`}</span>
+            <p className="truncate text-sm font-medium text-white">View Council</p>
+            <p className="truncate text-xs text-[var(--color-text-tertiary)]">
+              {activeMembers.length} active, edit members
+            </p>
           </div>
-
-          <div
-            className={clsx(
-              "absolute inset-0 flex items-center justify-center text-base font-semibold text-[var(--color-success)]",
-              motionClass,
-              collapsed ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-1 opacity-0"
-            )}
-          >
-            <span>{activeMembers.length}</span>
-          </div>
-        </div>
+        </Link>
 
         <button
           onClick={handleNewTopic}
