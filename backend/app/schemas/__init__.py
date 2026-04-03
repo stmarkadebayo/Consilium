@@ -23,6 +23,8 @@ class CouncilMemberResponse(BaseModel):
     persona_type: str
     position: int
     is_active: bool
+    identity_summary: str | None = None
+    status: str
 
 
 class CouncilResponse(BaseModel):
@@ -37,6 +39,11 @@ class CouncilResponse(BaseModel):
 
 class UpdateCouncilRequest(BaseModel):
     name: str
+
+
+class UpdateCouncilMemberRequest(BaseModel):
+    is_active: bool | None = None
+    position: int | None = Field(default=None, ge=0)
 
 
 # --- Persona ---
@@ -81,6 +88,18 @@ class PersonaDraftResponse(BaseModel):
 
 class UpdatePersonaDraftRequest(BaseModel):
     draft_profile: dict
+
+
+class RevisePersonaDraftRequest(BaseModel):
+    instruction: str = Field(..., min_length=1, max_length=4000)
+
+
+class PersonaDraftRevisionResponse(BaseModel):
+    id: str
+    revision_kind: str
+    instruction: str | None
+    profile: dict
+    created_at: datetime
 
 
 # --- Conversation ---
