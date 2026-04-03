@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export function AuthPanel() {
-  const { user, isLoading, login } = useAuth();
+  const { user, isLoading, error, login } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -35,6 +35,11 @@ export function AuthPanel() {
         <span className="relative z-10">Enter Council</span>
         <div className="absolute inset-0 bg-[var(--color-accent)] opacity-0 transition-opacity group-hover:opacity-100" />
       </button>
+      {error ? (
+        <p className="mt-4 max-w-xs text-center text-xs text-[var(--color-error)]" aria-live="polite">
+          {error}
+        </p>
+      ) : null}
       <p className="mt-4 text-xs text-[var(--color-text-tertiary)]" aria-live="polite">
         System Operational • Dev Mode Active
       </p>
