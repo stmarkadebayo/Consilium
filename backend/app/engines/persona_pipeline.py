@@ -64,6 +64,32 @@ class PersonaPipeline:
         )
         return raw.strip()
 
+    def revise_profile(
+        self,
+        *,
+        person_name: str,
+        persona_type: str,
+        current_profile: dict[str, Any],
+        revision_instruction: str,
+        custom_brief: str | None = None,
+    ) -> dict[str, Any]:
+        """Revise an existing persona profile from a natural-language instruction."""
+        prompt_template = _load_prompt("persona_profile_edit.txt")
+        prompt = prompt_template.format(
+            person_name=person_name,
+            persona_type=persona_type,
+            custom_brief=custom_brief or "No additional context provided.",
+            current_profile_json=json.dumps(current_profile, indent=2),
+            revision_instruction=revision_instruction,
+        )
+
+        raw = self.provider.generate_json(
+            prompt,
+            model_key="persona_creation",
+            purpose="persona_profile_revision",
+        )
+        return raw
+
     def run(
         self,
         *,
