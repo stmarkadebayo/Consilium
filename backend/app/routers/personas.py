@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.dependencies import DbDep, UserDep
 from app.schemas import (
     CreatePersonaDraftRequest,
     PersonaDraftResponse,
+    PersonaDraftRevisionResponse,
     PersonaResponse,
+    RevisePersonaDraftRequest,
     UpdatePersonaDraftRequest,
 )
 from app.services.persona_service import PersonaService
@@ -26,6 +28,22 @@ def get_persona(persona_id: str, user: UserDep, db: DbDep):
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
     return PersonaService.serialize_persona(persona)
+
+
+@router.delete("/{persona_id}", status_code=204)
+def delete_persona(persona_id: str, user: UserDep, db: DbDep):
+    persona = PersonaService.get_persona(db, persona_id, user.id)
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    PersonaService.delete_persona(db, persona, user=user)
+
+
+@router.post("/{persona_id}/delete", status_code=204)
+def delete_persona_via_post(persona_id: str, user: UserDep, db: DbDep):
+    persona = PersonaService.get_persona(db, persona_id, user.id)
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    PersonaService.delete_persona(db, persona, user=user)
 
 
 @router.post("/{persona_id}/deactivate", response_model=PersonaResponse)
@@ -80,6 +98,29 @@ def update_draft(draft_id: str, body: UpdatePersonaDraftRequest, user: UserDep, 
     return _serialize_draft(draft)
 
 
+@router.post("/drafts/{draft_id}/revise", response_model=PersonaDraftResponse)
+def revise_draft(
+    draft_id: str,
+    body: RevisePersonaDraftRequest,
+    request: Request,
+    user: UserDep,
+    db: DbDep,
+):
+    draft = PersonaService.get_draft(db, draft_id, user.id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    try:
+        draft = PersonaService.revise_draft(
+            db,
+            draft,
+            instruction=body.instruction.strip(),
+            provider=request.app.state.provider,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _serialize_draft(draft)
+
+
 @router.post("/drafts/{draft_id}/approve")
 def approve_draft(draft_id: str, user: UserDep, db: DbDep):
     draft = PersonaService.get_draft(db, draft_id, user.id)
@@ -92,6 +133,35 @@ def approve_draft(draft_id: str, user: UserDep, db: DbDep):
         "persona_id": persona.id,
         "council_member_id": member.id if member else None,
     }
+
+
+@router.get("/drafts/{draft_id}/revisions", response_model=list[PersonaDraftRevisionResponse])
+def list_draft_revisions(draft_id: str, user: UserDep, db: DbDep):
+    draft = PersonaService.get_draft(db, draft_id, user.id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    return [
+        PersonaDraftRevisionResponse(
+            id=revision.id,
+            revision_kind=revision.revision_kind,
+            instruction=revision.instruction,
+            profile=revision.profile_json or {},
+            created_at=revision.created_at,
+        )
+        for revision in PersonaService.list_draft_revisions(draft)
+    ]
+
+
+@router.post("/drafts/{draft_id}/revisions/{revision_id}/restore", response_model=PersonaDraftResponse)
+def restore_draft_revision(draft_id: str, revision_id: str, user: UserDep, db: DbDep):
+    draft = PersonaService.get_draft(db, draft_id, user.id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    try:
+        draft = PersonaService.restore_draft_revision(db, draft, revision_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _serialize_draft(draft)
 
 
 def _serialize_draft(draft) -> PersonaDraftResponse:
