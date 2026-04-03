@@ -66,6 +66,26 @@ class PersonaDraft(Base):
     user = relationship("User", back_populates="persona_drafts")
     job = relationship("Job", back_populates="persona_drafts")
     sources = relationship("PersonaSource", back_populates="draft", cascade="all, delete-orphan")
+    revisions = relationship(
+        "PersonaDraftRevision",
+        back_populates="draft",
+        cascade="all, delete-orphan",
+        order_by="PersonaDraftRevision.created_at.asc()",
+    )
+
+
+class PersonaDraftRevision(Base):
+    """Saved snapshot of a draft profile for timeline, diffing, and restore."""
+    __tablename__ = "persona_draft_revisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    draft_id: Mapped[str] = mapped_column(ForeignKey("persona_drafts.id", ondelete="CASCADE"), index=True)
+    revision_kind: Mapped[str] = mapped_column(String(32), default="manual")  # initial | ai | manual | restore
+    instruction: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    profile_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    draft = relationship("PersonaDraft", back_populates="revisions")
 
 
 class PersonaSnapshot(Base):
