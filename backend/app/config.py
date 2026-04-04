@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     default_user_display_name: str = "Demo User"
 
     # Runtime
-    auto_create_tables: bool = True
+    auto_run_migrations: bool = True
     council_timeout_seconds: int = 30
     job_runner_enabled: bool = True
     job_runner_poll_interval_seconds: float = 0.5
@@ -68,8 +68,8 @@ class Settings(BaseSettings):
             raise RuntimeError("Supabase auth is required outside local development.")
         if self.database_url.startswith("sqlite"):
             raise RuntimeError("SQLite is not allowed in staging or production.")
-        if self.auto_create_tables:
-            raise RuntimeError("AUTO_CREATE_TABLES must be disabled outside local development.")
+        if self.auto_run_migrations:
+            raise RuntimeError("AUTO_RUN_MIGRATIONS must be disabled outside local development.")
 
 
 @lru_cache(maxsize=1)
