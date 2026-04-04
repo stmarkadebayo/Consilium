@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.errors import AppError, bad_request
 from app.models.council import Council, CouncilMember
 from app.models.persona import Persona
 from app.models.user import User
@@ -45,7 +46,30 @@ class CouncilService:
         return [m for m in council.members if m.is_active]
 
     @staticmethod
+    def assert_ready_for_consult(council: Council | None) -> Council:
+        if council is None:
+            raise bad_request("council_not_found", "Council not found.")
+
+        active_count = len(CouncilService.active_members(council))
+        if active_count < council.min_personas:
+            raise bad_request(
+                "council_min_personas_not_met",
+                f"At least {council.min_personas} active personas are required.",
+                extra={"active_count": active_count, "required_count": council.min_personas},
+            )
+        return council
+
+    @staticmethod
     def add_persona(db: Session, council: Council, persona: Persona) -> CouncilMember:
+        if len(council.members) >= council.max_personas:
+            raise bad_request(
+                "council_max_personas_reached",
+                f"Council already has the maximum of {council.max_personas} advisors.",
+                extra={"max_personas": council.max_personas},
+            )
+        if any(member.persona_id == persona.id for member in council.members):
+            raise bad_request("council_member_exists", "Persona is already in the council.")
+
         next_position = max((m.position for m in council.members), default=-1) + 1
         member = CouncilMember(
             council_id=council.id,
@@ -87,14 +111,20 @@ class CouncilService:
         if not ordered_members:
             return member
 
-        clamped_position = max(0, min(new_position, len(ordered_members) - 1))
+        if new_position < 0 or new_position >= len(ordered_members):
+            raise bad_request(
+                "council_member_position_out_of_range",
+                "Requested council position is out of range.",
+                extra={"position": new_position, "member_count": len(ordered_members)},
+            )
+
         current_index = next((index for index, item in enumerate(ordered_members) if item.id == member.id), None)
         if current_index is None:
-            raise ValueError("Council member not found")
+            raise bad_request("council_member_not_found", "Council member not found.")
 
-        if current_index != clamped_position:
+        if current_index != new_position:
             ordered_members.pop(current_index)
-            ordered_members.insert(clamped_position, member)
+            ordered_members.insert(new_position, member)
 
         for index, item in enumerate(ordered_members):
             item.position = index
@@ -103,6 +133,27 @@ class CouncilService:
         db.flush()
         db.refresh(member)
         return member
+
+    @staticmethod
+    def remove_persona(db: Session, council: Council, persona_id: str) -> None:
+        remaining_members: list[CouncilMember] = []
+        removed_member: CouncilMember | None = None
+
+        for member in list(council.members):
+            if member.persona_id == persona_id and removed_member is None:
+                removed_member = member
+                db.delete(member)
+                continue
+            remaining_members.append(member)
+
+        if removed_member is None:
+            return
+
+        for index, member in enumerate(sorted(remaining_members, key=lambda item: item.position)):
+            member.position = index
+            db.add(member)
+
+        db.flush()
 
     @staticmethod
     def sync_onboarding_state(db: Session, *, user: User, council: Council) -> None:
