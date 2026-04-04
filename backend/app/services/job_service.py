@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.db import utcnow
+from app.errors import bad_request
 from app.models.job import Job
 
 
@@ -51,7 +52,11 @@ class JobService:
     @staticmethod
     def retry_job(db: Session, job: Job) -> Job:
         if job.retry_count >= job.max_retries:
-            raise ValueError("Maximum retries exceeded")
+            raise bad_request(
+                "job_retry_limit_exceeded",
+                "Maximum retries exceeded.",
+                extra={"retry_count": job.retry_count, "max_retries": job.max_retries},
+            )
         job.status = "retrying"
         job.retry_count += 1
         job.error_message = None
