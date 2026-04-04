@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from app.dependencies import DbDep, UserDep
+from app.errors import bad_request, not_found
 from app.schemas import JobResponse
 from app.services.job_service import JobService
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 def get_job(job_id: str, user: UserDep, db: DbDep):
     job = JobService.get_job(db, job_id, user.id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise not_found("job_not_found", "Job not found.")
     return JobResponse(
         id=job.id,
         job_type=job.job_type,
@@ -30,13 +31,10 @@ def get_job(job_id: str, user: UserDep, db: DbDep):
 def retry_job(job_id: str, user: UserDep, db: DbDep):
     job = JobService.get_job(db, job_id, user.id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise not_found("job_not_found", "Job not found.")
     if job.status != "failed":
-        raise HTTPException(status_code=400, detail="Only failed jobs can be retried")
-    try:
-        job = JobService.retry_job(db, job)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise bad_request("job_not_failed", "Only failed jobs can be retried.")
+    job = JobService.retry_job(db, job)
     return JobResponse(
         id=job.id,
         job_type=job.job_type,
