@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 
 from app.dependencies import DbDep, UserDep
+from app.errors import not_found
 from app.schemas import (
+    ConversationListResponse,
     ConversationSummaryResponse,
     CreateConversationRequest,
     StartConsultRequest,
@@ -16,10 +18,10 @@ from app.services.conversation_service import ConversationService
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
-@router.get("")
+@router.get("", response_model=ConversationListResponse)
 def list_conversations(user: UserDep, db: DbDep):
     items = ConversationService.list_conversations(db, user_id=user.id)
-    return {"conversations": items}
+    return ConversationListResponse(conversations=items)
 
 
 @router.post("")
@@ -41,15 +43,12 @@ def start_consult(
     db: DbDep,
     request: Request,
 ):
-    try:
-        conversation, message, job_id = ConversationService.start_consult(
-            db,
-            user=user,
-            content=body.content,
-            provider=request.app.state.provider,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    conversation, message, job_id = ConversationService.start_consult(
+        db,
+        user=user,
+        content=body.content,
+        provider=request.app.state.provider,
+    )
 
     return StartConsultResponse(
         conversation_id=conversation.id,
@@ -64,7 +63,7 @@ def get_conversation(conversation_id: str, user: UserDep, db: DbDep):
         db, conversation_id=conversation_id, user_id=user.id
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise not_found("conversation_not_found", "Conversation not found.")
     return ConversationService.serialize_conversation(conversation)
 
 
@@ -80,13 +79,10 @@ def submit_message(
         db, conversation_id=conversation_id, user_id=user.id
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise not_found("conversation_not_found", "Conversation not found.")
 
-    try:
-        message, job_id = ConversationService.submit_message(
-            db, user=user, conversation=conversation, content=body.content, provider=request.app.state.provider
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    message, job_id = ConversationService.submit_message(
+        db, user=user, conversation=conversation, content=body.content, provider=request.app.state.provider
+    )
 
     return SubmitMessageResponse(message_id=message.id, job_id=job_id)

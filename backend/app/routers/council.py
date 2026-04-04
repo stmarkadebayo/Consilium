@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from app.dependencies import DbDep, UserDep
+from app.errors import not_found
 from app.schemas import CouncilMemberResponse, CouncilResponse, UpdateCouncilMemberRequest, UpdateCouncilRequest
 from app.services.council_service import CouncilService
 
@@ -30,7 +31,7 @@ def update_council_member(member_id: str, body: UpdateCouncilMemberRequest, user
     council = CouncilService.get_or_create_for_user(db, user)
     member = CouncilService.get_member(council, member_id)
     if not member:
-        raise HTTPException(status_code=404, detail="Council member not found")
+        raise not_found("council_member_not_found", "Council member not found.")
 
     if body.is_active is not None:
         CouncilService.set_member_active(db, member, body.is_active)
