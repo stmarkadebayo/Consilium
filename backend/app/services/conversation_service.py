@@ -9,6 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.engines.council_engine import CouncilEngine
+from app.errors import AppError
 from app.models.conversation import Conversation, Message
 from app.models.job import Job
 from app.models.user import User
@@ -77,13 +78,8 @@ class ConversationService:
         provider: BaseProvider | None = None,
     ) -> tuple[Message, str]:
         """Submit a user message and create a council query job."""
-        council = CouncilService.get_for_user(db, user.id)
-        if not council:
-            raise ValueError("Council not found")
-
+        council = CouncilService.assert_ready_for_consult(CouncilService.get_for_user(db, user.id))
         members = CouncilService.active_members(council)
-        if len(members) < council.min_personas:
-            raise ValueError(f"At least {council.min_personas} active personas required")
 
         next_turn = (
             db.query(func.max(Message.turn_number))
@@ -145,6 +141,7 @@ class ConversationService:
         content: str,
         provider: BaseProvider | None = None,
     ) -> tuple[Conversation, Message, str]:
+        CouncilService.assert_ready_for_consult(CouncilService.get_for_user(db, user.id))
         conversation = ConversationService.create_conversation(db, user=user)
         message, job_id = ConversationService.submit_message(
             db,
@@ -199,15 +196,13 @@ class ConversationService:
             JobService.mark_completed(job, {"message_id": message_id})
             return
 
-        council = CouncilService.get_for_user(db, job.user_id)
-        if not council:
-            JobService.mark_failed(job, "Council not found")
+        try:
+            council = CouncilService.assert_ready_for_consult(CouncilService.get_for_user(db, job.user_id))
+        except AppError as error:
+            JobService.mark_failed(job, error.message)
             return
 
         members = CouncilService.active_members(council)
-        if len(members) < council.min_personas:
-            JobService.mark_failed(job, "Not enough active personas")
-            return
 
         try:
             # Create snapshots
