@@ -6,9 +6,11 @@ from typing import Optional, Tuple
 from sqlalchemy.orm import Session, joinedload
 
 from app.engines.persona_pipeline import PersonaPipeline
+from app.errors import bad_request
 from app.models.council import CouncilMember
 from app.models.job import Job
 from app.models.persona import Persona, PersonaDraft, PersonaDraftRevision, PersonaSnapshot, PersonaSource
+from app.schemas import PersonaProfile, PersonaResponse
 from app.models.user import User
 from app.services.council_service import CouncilService
 from app.services.event_service import EventService
@@ -18,6 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 class PersonaService:
+    @staticmethod
+    def normalize_profile(profile: dict) -> dict:
+        raw_profile = dict(profile or {})
+        communication_style = raw_profile.get("communication_style")
+        if isinstance(communication_style, list):
+            raw_profile["communication_style"] = {"traits": communication_style}
+        validated = PersonaProfile.model_validate(raw_profile)
+        return validated.model_dump(mode="python")
+
     @staticmethod
     def list_personas(db: Session, user_id: str) -> list[Persona]:
         return db.query(Persona).filter(Persona.user_id == user_id).order_by(Persona.created_at.asc()).all()
@@ -37,6 +48,8 @@ class PersonaService:
         persona_id = persona.id
         display_name = persona.display_name
 
+        if council:
+            CouncilService.remove_persona(db, council, persona.id)
         db.delete(persona)
         db.flush()
 
@@ -61,25 +74,24 @@ class PersonaService:
         add_to_council: bool = True,
     ) -> Tuple[Persona, Optional[CouncilMember]]:
         """Create a fully-formed persona from a profile dict."""
-        comm_style = profile.get("communication_style", {})
-        if isinstance(comm_style, list):
-            comm_style = {"traits": comm_style}
+        normalized_profile = PersonaService.normalize_profile(profile)
+        comm_style = normalized_profile.get("communication_style", {})
 
         persona = Persona(
             user_id=user.id,
-            display_name=profile.get("display_name", "Unknown"),
+            display_name=normalized_profile.get("display_name") or "Unknown",
             persona_type=persona_type,
-            identity_summary=profile.get("identity_summary"),
-            domains=profile.get("domains", []),
-            core_beliefs=profile.get("core_beliefs", []),
-            priorities=profile.get("priorities", []),
-            anti_values=profile.get("anti_values", []),
-            decision_patterns=profile.get("decision_patterns", []),
+            identity_summary=normalized_profile.get("identity_summary"),
+            domains=normalized_profile.get("domains", []),
+            core_beliefs=normalized_profile.get("core_beliefs", []),
+            priorities=normalized_profile.get("priorities", []),
+            anti_values=normalized_profile.get("anti_values", []),
+            decision_patterns=normalized_profile.get("decision_patterns", []),
             communication_style_json=comm_style,
-            style_markers=profile.get("style_markers", []),
-            abstention_rules=profile.get("abstention_rules", []),
-            confidence_by_topic=profile.get("confidence_by_topic", {}),
-            generated_prompt=profile.get("generated_prompt"),
+            style_markers=normalized_profile.get("style_markers", []),
+            abstention_rules=normalized_profile.get("abstention_rules", []),
+            confidence_by_topic=normalized_profile.get("confidence_by_topic", {}),
+            generated_prompt=normalized_profile.get("generated_prompt"),
             source_count=0,
             source_quality_score=None,
             status="active",
@@ -200,7 +212,7 @@ class PersonaService:
                 persona_type=persona_type,
                 custom_brief=custom_brief,
             )
-            draft.draft_profile_json = profile
+            draft.draft_profile_json = PersonaService.normalize_profile(profile)
             draft.review_status = "ready"
             db.add(draft)
             PersonaService.create_draft_revision(
@@ -229,11 +241,11 @@ class PersonaService:
     @staticmethod
     def update_draft(db: Session, draft: PersonaDraft, updates: dict) -> PersonaDraft:
         if draft.review_status == "generating":
-            raise ValueError("Draft is still generating")
+            raise bad_request("draft_still_generating", "Draft is still generating.")
         if draft.review_status == "approved":
-            raise ValueError("Approved drafts cannot be modified")
-        merged = {**(draft.draft_profile_json or {}), **updates}
-        draft.draft_profile_json = merged
+            raise bad_request("draft_approved", "Approved drafts cannot be modified.")
+        merged = {**(draft.draft_profile_json or {}), **PersonaService.normalize_profile(updates)}
+        draft.draft_profile_json = PersonaService.normalize_profile(merged)
         draft.review_status = "ready"
         db.add(draft)
         PersonaService.create_draft_revision(
@@ -255,11 +267,11 @@ class PersonaService:
         provider,
     ) -> PersonaDraft:
         if draft.review_status == "generating":
-            raise ValueError("Draft is still generating")
+            raise bad_request("draft_still_generating", "Draft is still generating.")
         if draft.review_status == "approved":
-            raise ValueError("Approved drafts cannot be modified")
+            raise bad_request("draft_approved", "Approved drafts cannot be modified.")
         if not draft.draft_profile_json:
-            raise ValueError("Draft profile is empty")
+            raise bad_request("draft_profile_empty", "Draft profile is empty.")
 
         pipeline = PersonaPipeline(provider=provider)
         revised_profile = pipeline.revise_profile(
@@ -271,7 +283,7 @@ class PersonaService:
         )
         revised_profile["generated_prompt"] = pipeline.generate_runtime_prompt(revised_profile)
 
-        draft.draft_profile_json = revised_profile
+        draft.draft_profile_json = PersonaService.normalize_profile(revised_profile)
         draft.review_status = "ready"
         db.add(draft)
         PersonaService.create_draft_revision(
@@ -303,15 +315,19 @@ class PersonaService:
         revision_id: str,
     ) -> PersonaDraft:
         if draft.review_status == "generating":
-            raise ValueError("Draft is still generating")
+            raise bad_request("draft_still_generating", "Draft is still generating.")
         if draft.review_status == "approved":
-            raise ValueError("Approved drafts cannot be modified")
+            raise bad_request("draft_approved", "Approved drafts cannot be modified.")
 
         revision = next((item for item in draft.revisions if item.id == revision_id), None)
         if revision is None:
-            raise ValueError("Revision not found")
+            raise bad_request("draft_revision_not_found", "Revision not found.")
+        if not revision.profile_json:
+            raise bad_request("draft_revision_empty", "Revision is empty and cannot be restored.")
+        if revision.profile_json == (draft.draft_profile_json or {}):
+            raise bad_request("draft_revision_already_active", "That revision is already active.")
 
-        draft.draft_profile_json = revision.profile_json or {}
+        draft.draft_profile_json = PersonaService.normalize_profile(revision.profile_json or {})
         draft.review_status = "ready"
         db.add(draft)
         PersonaService.create_draft_revision(
@@ -336,7 +352,7 @@ class PersonaService:
             draft_id=draft.id,
             revision_kind=revision_kind,
             instruction=instruction,
-            profile_json=draft.draft_profile_json or {},
+            profile_json=PersonaService.normalize_profile(draft.draft_profile_json or {}),
         )
         db.add(revision)
         db.flush()
@@ -349,6 +365,12 @@ class PersonaService:
         user: User,
     ) -> Tuple[Persona, Optional[CouncilMember]]:
         """Approve a draft, creating the full persona and adding to council."""
+        if draft.review_status != "ready":
+            raise bad_request(
+                "draft_not_ready",
+                f"Draft is not ready for approval (status: {draft.review_status}).",
+                extra={"review_status": draft.review_status},
+            )
         persona, member = PersonaService.create_persona_from_profile(
             db,
             user=user,
@@ -387,6 +409,7 @@ class PersonaService:
         council = CouncilService.get_for_user(db, persona.user_id)
         if council:
             CouncilService.deactivate_member(db, council, persona.id)
+            CouncilService.sync_onboarding_state(db, user=persona.user, council=council)
         persona.status = "inactive"
         db.add(persona)
         db.flush()
@@ -398,6 +421,7 @@ class PersonaService:
         council = CouncilService.get_for_user(db, persona.user_id)
         if council:
             CouncilService.activate_member(db, council, persona.id)
+            CouncilService.sync_onboarding_state(db, user=persona.user, council=council)
         persona.status = "active"
         db.add(persona)
         db.flush()
@@ -405,24 +429,24 @@ class PersonaService:
         return persona
 
     @staticmethod
-    def serialize_persona(persona: Persona) -> dict:
-        return {
-            "id": persona.id,
-            "display_name": persona.display_name,
-            "persona_type": persona.persona_type,
-            "identity_summary": persona.identity_summary,
-            "domains": persona.domains,
-            "core_beliefs": persona.core_beliefs,
-            "priorities": persona.priorities,
-            "anti_values": persona.anti_values,
-            "decision_patterns": persona.decision_patterns,
-            "communication_style": persona.communication_style_json,
-            "style_markers": persona.style_markers,
-            "abstention_rules": persona.abstention_rules,
-            "confidence_by_topic": persona.confidence_by_topic,
-            "source_count": persona.source_count,
-            "source_quality_score": persona.source_quality_score,
-            "status": persona.status,
-            "created_at": persona.created_at.isoformat() if persona.created_at else None,
-            "updated_at": persona.updated_at.isoformat() if persona.updated_at else None,
-        }
+    def serialize_persona(persona: Persona) -> PersonaResponse:
+        return PersonaResponse(
+            id=persona.id,
+            display_name=persona.display_name,
+            persona_type=persona.persona_type,
+            identity_summary=persona.identity_summary,
+            domains=persona.domains,
+            core_beliefs=persona.core_beliefs,
+            priorities=persona.priorities,
+            anti_values=persona.anti_values,
+            decision_patterns=persona.decision_patterns,
+            communication_style=persona.communication_style_json or {},
+            style_markers=persona.style_markers,
+            abstention_rules=persona.abstention_rules,
+            confidence_by_topic=persona.confidence_by_topic,
+            source_count=persona.source_count,
+            source_quality_score=persona.source_quality_score,
+            status=persona.status,
+            created_at=persona.created_at,
+            updated_at=persona.updated_at,
+        )
