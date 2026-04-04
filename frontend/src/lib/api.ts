@@ -1,6 +1,26 @@
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+type ApiErrorDetail = {
+  code?: string;
+  message?: string;
+  extra?: Record<string, unknown>;
+};
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  extra?: Record<string, unknown>;
+
+  constructor(message: string, status: number, detail?: ApiErrorDetail) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = detail?.code;
+    this.extra = detail?.extra;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit & { bodyJson?: unknown } = {}): Promise<T> {
   const { bodyJson, headers, ...rest } = options;
   const finalHeaders = new Headers(headers ?? undefined);
@@ -15,11 +35,19 @@ async function request<T>(path: string, options: RequestInit & { bodyJson?: unkn
 
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;
+    let detail: ApiErrorDetail | undefined;
     try {
       const payload = await response.json();
-      if (typeof payload?.detail === "string") message = payload.detail;
+      if (typeof payload?.detail === "string") {
+        message = payload.detail;
+      } else if (payload?.detail && typeof payload.detail === "object") {
+        detail = payload.detail as ApiErrorDetail;
+        if (typeof detail.message === "string" && detail.message.trim()) {
+          message = detail.message;
+        }
+      }
     } catch {}
-    throw new Error(message);
+    throw new ApiError(message, response.status, detail);
   }
 
   if (response.status === 204) {
