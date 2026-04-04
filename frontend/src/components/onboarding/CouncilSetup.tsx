@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePersonaPipeline } from "@/hooks/usePersonaPipeline";
-import { COUNCIL_REFRESH_EVENT, useCouncil } from "@/hooks/useCouncil";
+import { useCouncil } from "@/hooks/useCouncil";
 import { PersonaDraft } from "@/lib/api";
 import { PersonaDraftReview } from "./PersonaDraftReview";
 
@@ -57,8 +57,7 @@ export function CouncilSetup({ onComplete }: { onComplete: () => void }) {
     if (!draft) return;
     const res = await approveDraft(draft.id);
     if (res) {
-      await fetchCouncil();
-      window.dispatchEvent(new Event(COUNCIL_REFRESH_EVENT));
+      await fetchCouncil(true);
       setInputName("");
       setCustomBrief("");
       setDraft(null);

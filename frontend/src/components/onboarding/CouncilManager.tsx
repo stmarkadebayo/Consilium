@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, Trash2, X } from "lucide-react";
 import { api, Persona } from "@/lib/api";
-import { COUNCIL_REFRESH_EVENT, useCouncil } from "@/hooks/useCouncil";
+import { useCouncil } from "@/hooks/useCouncil";
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -77,8 +77,7 @@ export function CouncilManager() {
         setExpandedMemberId(null);
         setSelectedPersona(null);
       }
-      await fetchCouncil();
-      window.dispatchEvent(new Event(COUNCIL_REFRESH_EVENT));
+      await fetchCouncil(true);
     } catch (deleteError: unknown) {
       setPersonaError(getErrorMessage(deleteError, "Failed to delete advisor."));
     } finally {
